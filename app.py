@@ -685,7 +685,7 @@ def main():
     # Header Section
     st.markdown("""
         <div class="custom-header">
-            <h1 style="color: white; font-weight: 800; font-size: 3rem; margin-bottom: 0;">🧬 GENETIC ANALYTICS</h1>
+            <h1 style="color: white; font-weight: 800; font-size: 3rem; margin-bottom: 0;">GENETIC ANALYTICS</h1>
             <p style="color: #cbd5e1; font-size: 1.2rem; font-weight: 400; letter-spacing: 0.05em;">
                 Inbreeding Decision Support System for Advanced Breeding Management
             </p>
