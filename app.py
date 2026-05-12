@@ -606,9 +606,30 @@ def main():
             # Klasifikasi Summary
             st.markdown("### 🏷️ Distribusi Klasifikasi Ternak")
             dist = res_display_data["Klasifikasi"].value_counts()
+            
+            # Cek apakah ada Elite Stock
+            has_elite = "Elite Stock / Pejantan Inti" in dist.index
+            
             c_dist = st.columns(len(dist))
             for i, (label, count) in enumerate(dist.items()):
                 c_dist[i].metric(label, f"{count} ekor")
+
+            # Saran jika tidak ada Elite Stock
+            if not has_elite:
+                st.warning("⚠️ **Peringatan:** Tidak ditemukan **Elite Stock** dalam populasi ini.")
+                with st.container():
+                    st.markdown("""
+                    <div class="info-card">
+                    <b>💡 Saran Perbaikan Genetik:</b><br/>
+                    Karena populasi saat ini tidak memiliki individu dengan potensi genetik 'Elite' (EBV tinggi & Inbreeding rendah), berikut langkah yang disarankan:
+                    <ol>
+                        <li><b>Outcrossing:</b> Datangkan pejantan dari luar (atau semen beku) yang memiliki nilai pemuliaan teruji namun tidak memiliki hubungan kekerabatan dengan indukan saat ini.</li>
+                        <li><b>Seleksi Ketat:</b> Gunakan ternak kategori <b>'Bibit (Breeding Stock)'</b> terbaik sebagai indukan pengganti dan hindari penggunaan ternak 'Komersial' sebagai tetua.</li>
+                        <li><b>Evaluasi Ulang:</b> Pastikan data fenotipe akurat. Nilai EBV sangat bergantung pada akurasi pencatatan berat/produksi.</li>
+                        <li><b>Manajemen Inbreeding:</b> Fokus pada penurunan koefisien inbreeding di bawah 3% untuk membuka peluang munculnya individu Elite di generasi mendatang.</li>
+                    </ol>
+                    </div>
+                    """, unsafe_allow_html=True)
 
             # Selection Response
             if pheno_val:
