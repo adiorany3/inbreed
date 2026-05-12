@@ -211,14 +211,15 @@ def calculate_stats(df: pd.DataFrame):
         correlation = valid_df["F"].corr(valid_df["Phenotype"])
         
         # Regresi Linear Sederhana (Y = a + bX)
-        # b = n(sigma XY) - (sigma X)(sigma Y) / n(sigma X^2) - (sigma X)^2
         x = valid_df["F"]
         y = valid_df["Phenotype"]
         n = len(valid_df)
         
-        b = (n * (x * y).sum() - x.sum() * y.sum()) / (n * (x**2).sum() - (x.sum())**2)
+        denominator = (n * (x**2).sum() - (x.sum())**2)
+        if denominator == 0: return None
+
+        b = (n * (x * y).sum() - x.sum() * y.sum()) / denominator
         a = (y.sum() - b * x.sum()) / n
-        
         r_squared = correlation**2
         
         return {
@@ -390,65 +391,55 @@ def dots_to_pedigree(result_df):
     return "\n".join(lines)
 
 
-def generate_pdf(result_df):
-    """Membuat laporan PDF profesional menggunakan ReportLab."""
+def generate_pdf(result_df, settings=None):
+    """Membuat laporan PDF profesional dengan detail pemuliaan lengkap."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     
     # Custom Styles
     title_style = styles['Heading1']
-    title_style.alignment = 1  # Center
+    title_style.alignment = 1 
     
     elements = []
-    
-    # Judul
-    elements.append(Paragraph("LAPORAN ANALISIS INBREEDING TERNAK", title_style))
-    elements.append(Spacer(1, 12))
-    
-    # Ringkasan Ringkas
-    avg_f = result_df["Inbreeding_%"].mean()
-    max_f = result_df["Inbreeding_%"].max()
-    summary_text = f"Total Ternak: {len(result_df)} | Rata-rata Inbreeding: {avg_f:.2f}% | Inbreeding Maksimum: {max_f:.2f}%"
-    elements.append(Paragraph(summary_text, styles['Normal']))
+    elements.append(Paragraph("LAPORAN ANALISIS PEMULIAAN TERNAK", title_style))
     elements.append(Spacer(1, 20))
     
-    # Tabel Data
-    data = [["Animal_ID", "Sire", "Dam", "F (%)", "Indikasi"]]
+    # Summary Statistics PDF
+    avg_f = result_df["Inbreeding_%"].mean()
+    avg_ebv = result_df["EBV"].mean()
+    elements.append(Paragraph(f"<b>Ringkasan Populasi:</b>", styles['Heading2']))
+    summary_data = [
+        ["Total Populasi", f"{len(result_df)} ekor"],
+        ["Rata-rata Inbreeding (F)", f"{avg_f:.2f}%"],
+        ["Rata-rata EBV", f"{avg_ebv:.4f}"],
+        ["Waktu Analisis", pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')],
+    ]
+    st_table = Table(summary_data, colWidths=[150, 250])
+    st_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+    elements.append(st_table)
+    elements.append(Spacer(1, 20))
+    
+    # Main Data Table
+    elements.append(Paragraph("<b>Detail Individu & Klasifikasi:</b>", styles['Heading2']))
+    data = [["Animal_ID", "F (%)", "EBV", "Klasifikasi"]]
     for _, row in result_df.iterrows():
         data.append([
             str(row["Animal_ID"]),
-            str(row["Sire_ID"]),
-            str(row["Dam_ID"]),
             f"{row['Inbreeding_%']:.2f}",
-            str(row["Kondisi_Inbreeding"])
+            f"{row['EBV']:.4f}",
+            str(row["Klasifikasi"])
         ])
     
-    t = Table(data, hAlign='LEFT')
+    t = Table(data, hAlign='LEFT', colWidths=[120, 80, 80, 150])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.dodgerblue),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2563eb")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
     ]))
     elements.append(t)
-    elements.append(Spacer(1, 25))
-    
-    # Bagian Pencegahan & Insight
-    elements.append(Paragraph("STRATEGI PENCEGAHAN & MANAJEMEN", styles['Heading2']))
-    elements.append(Spacer(1, 10))
-    
-    insight_text = """
-    <b>1. Pertukaran Pejantan (Sire Rotation):</b> Hindari penggunaan pejantan yang sama selama lebih dari dua generasi pada kelompok induk yang sama. Tukar pejantan dengan peternak lain atau gunakan semen beku dari garis keturunan berbeda.<br/><br/>
-    <b>2. Pencatatan Pedigree yang Ketat:</b> Inbreeding hanya bisa dicegah jika silsilah ternak tercatat dengan baik. Pastikan setiap kelahiran dicatat induk dan bapaknya.<br/><br/>
-    <b>3. Batas Toleransi:</b> Usahakan koefisien inbreeding tetap di bawah 6.25%. Jika sudah mencapai 12.5%, segera lakukan 'outcrossing' (perkawinan dengan individu yang tidak berkerabat sama sekali).<br/><br/>
-    <b>4. Seleksi Berbasis Nilai Pemuliaan:</b> Jangan hanya memilih ternak berdasarkan fisik, tapi juga perhatikan hubungan kekerabatannya untuk mencegah depresi inbreeding.
-    """
-    elements.append(Paragraph(insight_text, styles['Normal']))
     
     doc.build(elements)
     buffer.seek(0)
@@ -457,75 +448,88 @@ def generate_pdf(result_df):
 
 def main():
     st.set_page_config(
-        page_title="Kalkulator Inbreeding Ternak",
-        page_icon="🐄",
+        page_title="Breeding & Inbreeding Analytics",
+        page_icon="🧬",
         layout="wide",
         initial_sidebar_state="expanded"
     )
 
-    # Custom CSS for better UI
+    # Custom CSS for Professional UI
     st.markdown("""
         <style>
+        /* Global Styles */
+        .main { background-color: #fcfcfc; }
+        h1, h2, h3 { color: #0f172a; font-family: 'Inter', sans-serif; }
+        
+        /* Metric Styling */
         [data-testid="stMetricValue"] {
-            font-size: 1.8rem !important;
-            font-weight: 700 !important;
-            color: #1e3a8a !important;
+            font-size: 2rem !important;
+            font-weight: 800 !important;
+            color: #2563eb !important;
         }
         [data-testid="stMetricLabel"] {
-            font-size: 1rem !important;
-            font-weight: 600 !important;
-            color: #374151 !important;
+            font-size: 0.9rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b !important;
         }
-        @media (prefers-color-scheme: dark) {
-            [data-testid="stMetricValue"] { color: #60a5fa !important; }
-            [data-testid="stMetricLabel"] { color: #e5e7eb !important; }
-        }
-        .stMetric {
-            background-color: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid rgba(128, 128, 128, 0.2);
-        }
-        /* Custom Tabs UI */
-        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-        .stTabs [data-baseweb="tab"] {
-            background-color: #f1f5f9;
-            border-radius: 8px 8px 0 0;
-            padding: 10px 20px;
-        }
-        @media (prefers-color-scheme: dark) {
-            .stTabs [data-baseweb="tab"] { background-color: #1e293b; }
-        }
-        .stTabs [aria-selected="true"] {
-            background-color: #1e3a8a !important;
-            color: white !important;
+        
+        /* Modern Cards */
+        .status-card {
+            background: white;
+            padding: 24px;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            margin-bottom: 1rem;
         }
         .info-card {
-            background-color: #e0f2fe;
-            padding: 15px;
-            border-radius: 10px;
-            border-left: 5px solid #0284c7;
-            margin: 10px 0;
-            color: #0369a1;
+            background-color: #f0f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 6px solid #0ea5e9;
+            color: #0c4a6e;
+            line-height: 1.6;
         }
-        h1, h2, h3 { color: #1e3a8a; }
+        
+        /* Tabs Customization */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 24px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 60px;
+            font-weight: 600;
+            font-size: 1rem;
+            color: #64748b;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #2563eb !important;
+            border-bottom-color: #2563eb !important;
+        }
+        
+        /* Dark Mode Compatibility */
         @media (prefers-color-scheme: dark) {
-            h1, h2, h3 { color: #60a5fa; }
-        }
-        .footer {
-            position: fixed;
-            left: 0; bottom: 0; width: 100%;
-            background-color: transparent;
-            color: #6b7280;
-            text-align: center;
-            padding: 10px;
-            font-size: 0.8rem;
+            .main { background-color: #0f172a; }
+            h1, h2, h3 { color: #f8fafc; }
+            .status-card { background: #1e293b; border-color: #334155; }
+            .info-card { background-color: #0c4a6e; color: #e0f2fe; border-left-color: #38bdf8; }
+            [data-testid="stMetricValue"] { color: #3b82f6 !important; }
         }
         </style>
     """, unsafe_allow_html=True)
 
-    st.title("🐄 Inbreeding & Breeding Insights")
-    st.markdown("Analisis silsilah, nilai pemuliaan, dan depresi inbreeding dalam satu platform.")
+    # Header Section
+    col_t1, col_t2 = st.columns([0.8, 0.2])
+    with col_t1:
+        st.title("🧬 Breeding & Inbreeding Analytics")
+        st.markdown("""
+            **Sistem Pengambilan Keputusan (DSS) Pemuliaan Ternak.**  
+            Analisis koefisien inbreeding, nilai pemuliaan (EBV), dan klasifikasi stok bibit berbasis data silsilah dan fenotipe.
+        """)
+    with col_t2:
+        st.image("https://cdn-icons-png.flaticon.com/512/2395/2395796.png", width=100)
+    
     st.markdown("---")
 
     with st.sidebar:
@@ -676,17 +680,20 @@ def main():
             
             # Detailed Interpretation for Selected Animal
             st.markdown("---")
-            st.subheader("🧐 Interpretasi Individual")
-            selected_animal = st.selectbox("Pilih Sapi untuk Interpretasi Detail:", res_display_data["Animal_ID"])
+            col_sel1, col_sel2 = st.columns([0.4, 0.6])
+            with col_sel1:
+                st.subheader("🧐 Interpretasi Individual")
+                selected_animal = st.selectbox("Pilih Sapi:", res_display_data["Animal_ID"])
+            
             if selected_animal:
                 row = res_display_data[res_display_data["Animal_ID"] == selected_animal].iloc[0]
-                st.write(f"**Individu:** {row['Animal_ID']}")
-                st.write(row["Interpretasi_Pemuliaan"])
-                st.markdown(f"""
-                - **Inbreeding:** {row['Inbreeding_%']}% ({row['Kondisi_Inbreeding']})
-                - **Dampak pada Performa:** Penurunan sebesar {row['Depresi_Inbreeding']} unit dari potensi aslinya.
-                - **Keterangan:** {row['Dampak_Biologis']}
-                """)
+                with col_sel2:
+                    st.info(f"**Individu:** {row['Animal_ID']}\n\n{row['Interpretasi_Pemuliaan']}")
+                    st.markdown(f"""
+                    - **Inbreeding:** {row['Inbreeding_%']}% ({row['Kondisi_Inbreeding']})
+                    - **Dampak Performa:** {row['Depresi_Inbreeding']} unit.
+                    - **Dampak Biologis:** {row['Dampak_Biologis']}
+                    """)
             
             # Additional Information based on Max F
             st.markdown("### � Panduan Interpretasi")
@@ -702,18 +709,18 @@ def main():
             st.info(dampak_inbreeding(max_f))
             
             # Download options
-            st.markdown("### 📥 Unduh Hasil")
+            st.markdown("### 📥 Unduh Laporan")
             c1, c2, c3 = st.columns(3)
             csv = clean_display(res_df).to_csv(index=False).encode('utf-8')
-            c1.download_button("📂 CSV", csv, "hasil_inbreeding.csv", "text/csv", use_container_width=True)
+            c1.download_button("📂 CSV (Data Lengkap)", csv, "analytics_data.csv", "text/csv", use_container_width=True)
             
             # PDF Report
             pdf_data = generate_pdf(res_display_data)
-            c2.download_button("📄 Laporan PDF", pdf_data, "Laporan_Inbreeding.pdf", "application/pdf", use_container_width=True)
+            c2.download_button("📄 PDF (Laporan Resmi)", pdf_data, "Breeding_Report.pdf", "application/pdf", use_container_width=True)
             
             # Simple Text Report
             txt_report = dots_to_pedigree(res_display_data)
-            c3.download_button("📝 Ringkasan TXT", txt_report.encode('utf-8'), "laporan_inbreeding.txt", "text/plain", use_container_width=True)
+            c3.download_button("📝 TXT (Ringkasan Cepat)", txt_report.encode('utf-8'), "summary.txt", "text/plain", use_container_width=True)
 
             # Extra Insights Section
             st.markdown("---")
@@ -721,7 +728,7 @@ def main():
             
             with st.expander("Lihat Detail Konsep Pemuliaan"):
                 col_i1, col_i2 = st.columns(2)
-                with col_i1:
+            with col_i1:
                     st.markdown("""
                     **1. Heritabilitas ($h^2$):**
                     Sejauh mana variasi fenotipe disebabkan oleh genetik aditif. 
@@ -732,11 +739,18 @@ def main():
                     **2. Nilai Pemuliaan (EBV):**
                     Prediksi nilai genetik tetua yang akan diturunkan. EBV adalah dua kali nilai transmisi genetik (*Progeny Difference*).
                     """)
-                with col_i2:
+            with col_i2:
                     st.markdown("""
-                    **3. Depresi Inbreeding:**
-                    Penurunan rata-rata performa akibat peningkatan homozigositas. Paling terlihat pada sifat-sifat dengan heritabilitas rendah (fertilitas, daya tahan hidup).
-                    
+                    **3. Seleksi Tandem:**
+                    Metode seleksi satu sifat secara bertahap dalam beberapa generasi sebelum beralih ke sifat lain. Efektif jika fokus pada satu tujuan ekonomi utama.
+
+                    **Strategi Seleksi Tandem & Hubungan Statistik:**
+                    Jika Anda menerapkan seleksi tandem, perhatikan langkah strategis berikut:
+                    - **Prioritas Sifat:** Mulailah dengan sifat yang memiliki **heritabilitas ($h^2$)** atau nilai ekonomi tertinggi untuk kemajuan awal yang cepat.
+                    - **Ambang Batas (Goal):** Tetapkan target minimum sebelum beralih ke sifat berikutnya agar kemajuan genetik pada sifat pertama tidak hilang.
+                    - **Analisis Korelasi:** Gunakan metrik **Korelasi ($r$)** di atas untuk memantau apakah perbaikan pada satu sifat tidak merusak sifat lain (korelasi negatif).
+                    - **Regresi & Prediksi:** Manfaatkan nilai **Regresi ($b$)** untuk memprediksi sejauh mana performa akan berubah seiring perubahan genetik pada sifat yang sedang diseleksi.
+
                     **4. Intensitas Seleksi ($i$):**
                     Kekuatan seleksi yang diterapkan. Semakin sedikit ternak yang terpilih sebagai tetua dari total populasi, semakin besar intensitasnya ($i$).
                     """)
