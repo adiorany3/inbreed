@@ -418,14 +418,21 @@ def make_dot(result_df, max_nodes=50):
 
 
 def dots_to_pedigree(result_df):
-    """Fallback simple text for PDF if no library exists."""
-    lines = ["LAPORAN INBREEDING SAPI", "="*30, ""]
+    """Membuat ringkasan teks cepat (.txt) untuk laporan lapangan."""
+    lines = ["LAPORAN ANALISIS PEMULIAAN TERNAK", "="*40]
+    lines.append(f"Dicetak pada: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}")
+    lines.append(f"Visualisasi Interaktif: https://inbreeding.streamlit.app/")
+    lines.append("-" * 40 + "\n")
+    
     for _, row in result_df.iterrows():
-        lines.append(f"Animal: {row['Animal_ID']}")
-        lines.append(f"Ref: F={row['Inbreeding_%']}% ({row['Kondisi_Inbreeding']})")
-        lines.append(f"Dampak: {row['Dampak_Biologis']}")
-        lines.append(f"Rekomendasi: {row['Rekomendasi']}")
-        lines.append("-" * 20)
+        lines.append(f"Individu      : {row['Animal_ID']}")
+        lines.append(f"Inbreeding (F): {row['Inbreeding_%']:.2f}%")
+        lines.append(f"EBV           : {row['EBV']:.4f}")
+        lines.append(f"Klasifikasi   : {row['Klasifikasi']}")
+        lines.append(f"Rekomendasi   : {row['Rekomendasi']}")
+        lines.append("-" * 30)
+    
+    lines.append("\n*Catatan: Karena data melebihi 100 ekor, visualisasi pada aplikasi web hanya menampilkan 50 individu pertama untuk menjaga performa.")
     return "\n".join(lines)
 
 
@@ -518,7 +525,7 @@ def generate_pdf(result_df, settings=None):
         leftIndent=20
     )
     
-    elements.append(Paragraph("Data hubungan keturunan untuk visualisasi eksternal (Graphviz Dot Format):", styles['Italic']))
+    elements.append(Paragraph("Data hubungan keturunan (30 individu pertama):", styles['Italic']))
     elements.append(Spacer(1, 10))
     
     # Ambil 30 baris silsilah sebagai referensi teks di PDF
@@ -526,12 +533,17 @@ def generate_pdf(result_df, settings=None):
     for _, row in result_df.head(30).iterrows():
         sire = row['Sire_ID'] if not is_unknown(row['Sire_ID']) else "Unknown"
         dam = row['Dam_ID'] if not is_unknown(row['Dam_ID']) else "Unknown"
-        pedigree_lines.append(f"• {row['Animal_ID']} ← Sire: {sire}, Dam: {dam}")
+        pedigree_lines.append(f"• {row['Animal_ID']} &larr; Sire: {sire}, Dam: {dam}")
     
     pedigree_text = "<br/>".join(pedigree_lines)
     elements.append(Paragraph(pedigree_text, dot_text_style))
     elements.append(Spacer(1, 15))
-    elements.append(Paragraph("<i>*Catatan: Gunakan antarmuka web untuk melihat diagram interaktif secara visual.</i>", styles['Italic']))
+
+    # Link URL permanen dengan format yang lebih eksplisit
+    link_url = "https://inbreeding.streamlit.app/"
+    elements.append(Paragraph(f'<b>Akses Visualisasi Lengkap:</b> <a href="{link_url}" color="blue"><u>{link_url}</u></a>', styles['Normal']))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("<i>*Catatan: Karena data melebihi 100 ekor, visualisasi pada aplikasi web hanya menampilkan 50 individu pertama untuk menjaga performa.</i>", styles['Italic']))
     
     doc.build(elements)
     buffer.seek(0)
