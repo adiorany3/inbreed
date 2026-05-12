@@ -358,9 +358,21 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
         lambda r: interpretasi_pemuliaan(r["EBV"], r["Inbreeding_%"], float(r["Depresi_Inbreeding"]), r["Animal_ID"], res_df), 
         axis=1
     )
+    res_df["Inbreeding_%"] = res_df["Inbreeding_%"].apply(lambda x: round(float(x), 4))
     res_df["Kondisi_Inbreeding"] = res_df["Inbreeding_%"].apply(kondisi_inbreeding)
     res_df["Dampak_Biologis"] = res_df["Inbreeding_%"].apply(dampak_inbreeding)
     res_df["Rekomendasi"] = res_df["Inbreeding_%"].apply(rekomendasi)
+
+    # 6. Deteksi Perkawinan Sedarah (Backcross Bapak-Anak)
+    res_df["Peringatan_Reproduksi"] = ""
+    for idx, row in res_df.iterrows():
+        sire = row["Sire_ID"]
+        dam = row["Dam_ID"]
+        if sire and dam:
+            # Cek apakah bapak adalah bapak dari ibunya (Inbreeding 25% atau lebih)
+            grand_sire_of_dam, grand_dam_of_dam = parents_map.get(str(dam), (None, None))
+            if str(sire) == str(grand_sire_of_dam):
+                res_df.at[idx, "Peringatan_Reproduksi"] = "⚠️ PERKAWINAN BAPAK-ANAK TERDETEKSI"
 
     return clean_display(df_input), res_df, pd.DataFrame(A, index=order, columns=order)
 
@@ -558,112 +570,132 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # Clean & Professional Corporate Theme CSS
+    # CSS for Full Auto Dark Theme (Follows System/Streamlit)
     st.markdown("""
         <style>
-        /* Base Variables for Light/Dark */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        
+        /* Base Variables (Forces Dark Mode as Default but respects system) */
         :root {
-            --bg-main: #f8fafc;
-            --card-bg: #ffffff;
-            --text-main: #0f172a;
-            --text-sub: #475569;
-            --accent-primary: #2563eb; /* Corporate Blue */
-            --border-color: #e2e8f0;
+            --bg-main: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f1f5f9;
+            --text-sub: #94a3b8;
+            --accent-primary: #3b82f6; 
+            --accent-secondary: #0ea5e9;
+            --border-color: #334155;
+            --sidebar-bg: #1e293b;
+            --tab-bg: #334155;
+            --tab-text: #cbd5e1;
+            --header-gradient: linear-gradient(90deg, #1e293b 0%, #334155 100%);
         }
 
-        @media (prefers-color-scheme: dark) {
+        /* Adaptive Theme based on Streamlit/System */
+        @media (prefers-color-scheme: light) {
             :root {
-                --bg-main: #0f172a;
-                --card-bg: #1e293b;
-                --text-main: #f8fafc;
-                --text-sub: #94a3b8;
-                --accent-primary: #3b82f6; /* Lighter Blue */
-                --border-color: #334155;
+                --bg-main: #f1f5f9;
+                --card-bg: #ffffff;
+                --text-main: #1e293b;
+                --text-sub: #64748b;
+                --border-color: #e2e8f0;
+                --sidebar-bg: #ffffff;
+                --tab-bg: #e2e8f0;
+                --tab-text: #475569;
             }
         }
 
-        /* Global Theme */
+        /* App Container */
         .main { 
-            background-color: var(--bg-main); 
-        }
-        h1, h2, h3 { 
-            color: var(--text-main); 
-            font-family: 'Inter', -apple-system, sans-serif;
-            font-weight: 700;
-        }
-        
-        /* Metric Styling */
-        [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
-            font-weight: 700 !important;
-            color: var(--accent-primary) !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 0.85rem !important;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-sub) !important;
-        }
-        
-        /* Cards & UI Elements */
-        .status-card {
-            background: var(--card-bg);
-            padding: 24px;
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
-            margin-bottom: 20px;
-            color: var(--text-main);
-        }
-        .info-card {
-            background-color: var(--card-bg);
-            padding: 20px;
-            border-radius: 12px;
-            border-left: 4px solid var(--accent-primary);
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-            line-height: 1.6;
-        }
-        
-        /* Tabs Customization */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 24px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        .stTabs [data-baseweb="tab"] {
-            height: 50px;
-            font-weight: 500;
-            color: var(--text-sub);
-        }
-        .stTabs [aria-selected="true"] {
-            color: var(--accent-primary) !important;
-            border-bottom-color: var(--accent-primary) !important;
+            background-color: var(--bg-main) !important;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main) !important;
         }
 
-        /* Footer */
-        .footer {
+        /* Global Text Color Overrides for Auto Dark */
+        .stMarkdown, p, span, label, .stMetric label, [data-testid="stMetricValue"], 
+        .stSelectbox label, .stSlider label {
+            color: var(--text-main) !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--text-main) !important;
+        }
+
+        /* Header Canvas remains dark/gradient for both modes for premium feel */
+        .custom-header {
+            background: var(--header-gradient);
+            padding: 3rem 2rem;
+            border-radius: 0 0 2rem 2rem;
+            margin: -6rem -4rem 3rem -4rem;
+            color: white !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
             text-align: center;
-            color: var(--text-sub);
-            padding: 30px 0;
-            font-size: 0.85rem;
-            border-top: 1px solid var(--border-color);
-            margin-top: 40px;
+        }
+        .custom-header * {
+            color: white !important;
+        }
+        
+        /* Metrics Styling */
+        div[data-testid="stMetric"] {
+            background: var(--card-bg) !important;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        /* Cards & Info Boxes */
+        .info-card {
+            background: var(--card-bg) !important;
+            color: var(--text-main) !important;
+            padding: 1.5rem;
+            border-radius: 1rem;
+            border-left: 5px solid var(--accent-primary);
+            border: 1px solid var(--border-color);
+            margin: 1rem 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* Sidebar Styling */
+        section[data-testid="stSidebar"] {
+            background-color: var(--sidebar-bg) !important;
+            border-right: 1px solid var(--border-color) !important;
+        }
+
+        /* Tabs Styling */
+        .stTabs [data-baseweb="tab"] {
+            background-color: var(--tab-bg) !important;
+            color: var(--tab-text) !important;
+            border-radius: 0.5rem 0.5rem 0 0;
+            margin-right: 4px;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: var(--accent-primary) !important;
+            color: white !important;
+        }
+        </style>
+    """,oldString:
+        .stTabs [aria-selected="true"] {
+            background-color: var(--accent-primary) !important;
+            color: white !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
     # Header Section
-    st.markdown(f"""
-        <div style="margin-bottom: 2rem;">
-            <h1 style="margin-bottom: 0.5rem;">📈 Breeding Decision Support System</h1>
-            <p style="color: var(--text-sub); font-size: 1.1rem;">Sistem Analisis Inbreeding & Manajemen Strategi Pemuliaan Ternak</p>
+    st.markdown("""
+        <div class="custom-header">
+            <h1 style="color: white; font-weight: 800; font-size: 3rem; margin-bottom: 0;">🧬 GENETIC ANALYTICS</h1>
+            <p style="color: #cbd5e1; font-size: 1.2rem; font-weight: 400; letter-spacing: 0.05em;">
+                Inbreeding Decision Support System for Advanced Breeding Management
+            </p>
         </div>
     """, unsafe_allow_html=True)
 
     with st.sidebar:
-        st.header("⚙️ Konfigurasi")
+        st.markdown('<div class="sidebar-header">⚙️ CONFIGURATION</div>', unsafe_allow_html=True)
         mode = st.radio(
-            "Pilih Sumber Data",
+            "Select Data Source",
             ["Contoh sapi lengkap", "Unggah file sendiri"],
             help="Gunakan contoh data untuk mempelajari cara kerja atau unggah file Anda sendiri."
         )
@@ -785,12 +817,44 @@ def main():
                 valid_phenos = pd.to_numeric(res_display_data["Phenotype"], errors='coerce').dropna()
                 if not valid_phenos.empty:
                     sd_p = valid_phenos.std()
+                    avg_p = valid_phenos.mean()
                     response = calculate_selection_response(h2, sd_p, intensity)
                     
-                    r1.metric("Standar Deviasi Fenotipe", f"{sd_p:.2f}")
-                    r2.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
-                    r3.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
+                    r1.metric("Rata-rata Fenotipe", f"{avg_p:.2f}")
+                    r2.metric("Standar Deviasi Fenotipe", f"{sd_p:.2f}")
+                    r1_sub, r2_sub = st.columns(2)
+                    r1_sub.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
+                    r2_sub.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
                     
+                    # Backcross/Sire-Daughter Alert Section
+                    backcross_cases = res_display_data[res_display_data["Peringatan_Reproduksi"] != ""]
+                    if not backcross_cases.empty:
+                        st.markdown("---")
+                        st.error(f"🚨 **Terdeteksi {len(backcross_cases)} Kasus Perkawinan Bapak-Anak (Backcross)**")
+                        
+                        cols_back = st.columns(2)
+                        with cols_back[0]:
+                            st.write("**Daftar Individu Terpapar:**")
+                            st.dataframe(backcross_cases[["Animal_ID", "Sire_ID", "Dam_ID", "Inbreeding_%"]], hide_index=True)
+                        
+                        with cols_back[1]:
+                            st.markdown("""
+                            <div class="info-card" style="border-left: 4px solid #ef4444;">
+                            <b>🛡️ Insight Manajemen Reproduksi & IB:</b><br/>
+                            Perkawinan bapak dengan anak kandungnya menghasilkan koefisien inbreeding (F) minimal <b>25%</b>.
+                            <ul>
+                                <li><b>Risiko Utama:</b> Penurunan vitalitas drastis, risiko cacat bawaan tinggi, dan depresi inbreeding pada performa pertumbuhan/susu.</li>
+                                <li><b>Strategi Inseminasi Buatan (IB):</b>
+                                    <ul>
+                                        <li><b>Database Semen:</b> Inseminator WAJIB mengecek kartu ternak. Jangan gunakan kode semen dari pejantan yang sama dengan Bapak dari betina tersebut.</li>
+                                        <li><b>Rotasi Straw:</b> Gunakan straw dari pejantan berbeda <i>lineage</i> (garis keturunan) atau bangsa lain (Crossbreeding) jika diperlukan untuk memutus rantai inbreeding.</li>
+                                    </ul>
+                                </li>
+                                <li><b>Culling:</b> Individu hasil backcross sebaiknya dijadikan <b>Final Stock</b> (ternak potong) dan tidak dipilih sebagai calon indukan (replacement).</li>
+                            </ul>
+                            </div>
+                            """, unsafe_allow_html=True)
+
                     # Hubungan Inbreeding vs Fenotipe (Korelasi & Regresi)
                     st.markdown("---")
                     st.subheader("📈 Analisis Hubungan Inbreeding vs Fenotipe")
