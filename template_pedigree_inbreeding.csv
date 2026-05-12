@@ -1,8 +1,8 @@
 Animal_ID,Sire_ID,Dam_ID
-A,,
-B,,
-C,A,B
-D,A,B
-E,C,D
-F,C,B
-G,E,F
+P1,,
+P2,,
+A1,P1,P2
+A2,P1,P2
+B1,A1,A2
+B2,A1,P2
+C1,B1,B2
