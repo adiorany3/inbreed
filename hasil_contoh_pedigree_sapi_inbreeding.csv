@@ -1,0 +1,9 @@
+﻿Animal_ID,Sire_ID,Dam_ID,Hubungan_Parent_A,Koefisien_Inbreeding_F,Inbreeding_%,Kategori,Proses_Perhitungan
+SAPI_JANTAN_01,-,-,0.0,0.0,0.0,Tidak inbred / founder,"Founder: pejantan dan induk tidak diketahui, sehingga F = 0%."
+SAPI_BETINA_01,-,-,0.0,0.0,0.0,Tidak inbred / founder,"Founder: pejantan dan induk tidak diketahui, sehingga F = 0%."
+SAPI_A1,SAPI_JANTAN_01,SAPI_BETINA_01,0.0,0.0,0.0,Tidak inbred / founder,"F_SAPI_A1 = 0,5 × A(SAPI_JANTAN_01,SAPI_BETINA_01) = 0,5 × 0.000000 = 0.000000 = 0.00%."
+SAPI_A2,SAPI_JANTAN_01,SAPI_BETINA_01,0.0,0.0,0.0,Tidak inbred / founder,"F_SAPI_A2 = 0,5 × A(SAPI_JANTAN_01,SAPI_BETINA_01) = 0,5 × 0.000000 = 0.000000 = 0.00%."
+SAPI_B1,SAPI_A1,SAPI_A2,0.5,0.25,25.0,Sangat tinggi,"F_SAPI_B1 = 0,5 × A(SAPI_A1,SAPI_A2) = 0,5 × 0.500000 = 0.250000 = 25.00%."
+SAPI_B2,SAPI_A1,SAPI_BETINA_01,0.5,0.25,25.0,Sangat tinggi,"F_SAPI_B2 = 0,5 × A(SAPI_A1,SAPI_BETINA_01) = 0,5 × 0.500000 = 0.250000 = 25.00%."
+SAPI_C1,SAPI_A1,SAPI_B1,0.75,0.375,37.5,Sangat tinggi,"F_SAPI_C1 = 0,5 × A(SAPI_A1,SAPI_B1) = 0,5 × 0.750000 = 0.375000 = 37.50%."
+SAPI_D1,SAPI_B1,SAPI_B2,0.625,0.3125,31.25,Sangat tinggi,"F_SAPI_D1 = 0,5 × A(SAPI_B1,SAPI_B2) = 0,5 × 0.625000 = 0.312500 = 31.25%."
