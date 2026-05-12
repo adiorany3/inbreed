@@ -735,7 +735,7 @@ def main():
             
             m0.metric("Heritabilitas ($h^2$)", f"{h2:.2f}")
             m1.metric("Total Populasi", f"{total_sapi} ekor")
-            m2.metric("Sapi Inbred", f"{inbred_sapi} ekor")
+            m2.metric("Ternak Inbred", f"{inbred_sapi} ekor")
             m3.metric("Rata-rata F", f"{avg_f:.2f}%")
             m4.metric("F Tertinggi", f"{max_f:.2f}%")
 
