@@ -746,7 +746,7 @@ def main():
         res_display_data = res_df[res_df["Tipe_Data"] == "Data input"]
         
         # Define tabs
-        tabs = st.tabs(["Hasil & Analisis", "Visualisasi Genetik", "Bagan Pedigree", "Matriks Hubungan (A)"])
+        tabs = st.tabs(["Hasil & Analisis", "Visualisasi Genetik", "Bagan Pedigree", "Matriks Hubungan (A)", "Heterosis & Crossbreeding"])
 
         with tabs[0]:
             st.subheader("Ringkasan Data")
@@ -1031,6 +1031,56 @@ def main():
                     st.dataframe(matrix_df, use_container_width=True)
             else:
                 st.dataframe(matrix_df, use_container_width=True)
+
+        with tabs[4]:
+            st.subheader(" Wawasan Heterosis & Strategi Persilangan")
+            
+            h_col1, h_col2 = st.columns(2)
+            
+            with h_col1:
+                st.markdown("""
+                ###  Apa itu Heterosis?
+                **Heterosis** (atau *Hybrid Vigor*) adalah peningkatan performa pada anak hasil persilangan dibandingkan dengan rata-rata kedua tetuanya.
+                
+                **Rumus Sederhana:**
+                $$HF_1 = \\text{Rata-rata Anak} - \\text{Rata-rata Tetua}$$
+                $$\\% \\text{Heterosis} = \\frac{HF_1}{\\text{Rata-rata Tetua}} \\times 100\\%$$
+                
+                **Mengapa Penting?**
+                Heterosis sangat efektif untuk sifat-sifat dengan **heritabilitas rendah**, seperti:
+                - Kemampuan bertahan hidup (survival).
+                - Kesuburan/Reproduksi.
+                - Ketahanan terhadap penyakit.
+                """)
+                
+                st.info("""
+                ** Insight Penting:**
+                Inbreeding adalah kebalikan dari heterosis. Jika inbreeding menurunkan performa (Depresi Inbreeding), maka persilangan (outbreeding) meningkatkannya melalui heterosis.
+                """)
+
+            with h_col2:
+                st.markdown("""
+                ###  Strategi Persilangan (Crossbreeding)
+                Untuk mendapatkan heterosis maksimal, Anda dapat menerapkan:
+                
+                1. **Terminal Cross:** Semua anak hasil persilangan dijual (tidak dijadikan bibit). Memberikan heterosis 100% pada anak.
+                2. **Rotational Crossing:** Menggunakan dua atau tiga bangsa secara bergantian. Mempertahankan heterosis sekitar 67% (2 bangsa) atau 86% (3 bangsa) pada generasi berkelanjutan.
+                3. **Backcrossing:** Mengawayinkan anak kembali ke salah satu bangsa murni tetuanya. Digunakan untuk memasukkan sifat spesifik dari satu bangsa ke bangsa lain.
+                
+                **Rekomendasi:**
+                - Gunakan pejantan dari bangsa yang unggul pada sifat pertumbuhan.
+                - Gunakan induk dari bangsa yang memiliki keunggulan maternal (produksi susu, kesabaran).
+                """)
+
+            st.markdown("---")
+            st.markdown("""
+            ###  Korelasi Genetik vs Heterosis
+            Penting untuk diingat bahwa heterosis tidak bersifat permanen (tidak diturunkan secara stabil seperti EBV). 
+            - **EBV** digunakan untuk kemajuan genetik jangka panjang (seleksi).
+            - **Heterosis** digunakan untuk keuntungan produksi jangka pendek (persilangan).
+            
+            Sistem kami membantu Anda menjaga agar tingkat inbreeding tetap rendah agar potensi heterosis saat persilangan nanti tetap optimal.
+            """)
         
     except Exception as e:
         st.error(f" Terjadi kesalahan dalam pengolahan data: {e}")
