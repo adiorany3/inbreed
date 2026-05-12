@@ -92,20 +92,146 @@ def contoh_sapi_lengkap() -> pd.DataFrame:
         "Animal_ID": ["PEJANTAN_01", "INDUK_01", "SAPI_C", "SAPI_D", "SAPI_X", "SAPI_B", "SAPI_A", "SAPI_E", "SAPI_F"],
         "Sire_ID": ["-", "-", "PEJANTAN_01", "PEJANTAN_01", "PEJANTAN_01", "SAPI_D", "SAPI_B", "SAPI_B", "SAPI_D"],
         "Dam_ID": ["-", "-", "INDUK_01", "INDUK_01", "INDUK_01", "SAPI_C", "SAPI_C", "-", "-"],
+        "Phenotype": [550, 420, 480, 500, 490, 460, 470, 430, 440]
     })
 
 
-def standardize_input(raw_df, id_col, sire_col, dam_col):
-    df = raw_df[[id_col, sire_col, dam_col]].copy()
-    df.columns = ["Animal_ID", "Sire_ID", "Dam_ID"]
-    for col in ["Animal_ID", "Sire_ID", "Dam_ID"]:
-        df[col] = df[col].apply(clean_id)
+def calculate_breeding_value(res_df: pd.DataFrame, phenotype_col: str, h2: float) -> pd.DataFrame:
+    """
+    Menghitung Estimated Breeding Value (EBV) sederhana.
+    EBV = h^2 * (P - P_avg)
+    """
+    if phenotype_col not in res_df.columns:
+        res_df["EBV"] = 0.0
+        return res_df
+        
+    # Ambil data input saja untuk rata-rata populasi
+    input_data = res_df[res_df["Tipe_Data"] == "Data input"]
+    if input_data.empty:
+        res_df["EBV"] = 0.0
+        return res_df
+        
+    pop_avg = pd.to_numeric(input_data[phenotype_col], errors='coerce').mean()
+    
+    def calc_ebv(row):
+        try:
+            p_val = float(row[phenotype_col])
+            return h2 * (p_val - pop_avg)
+        except:
+            return 0.0
+            
+    res_df["EBV"] = res_df.apply(calc_ebv, axis=1)
+    return res_df
+
+
+def calculate_selection_response(h2: float, sd_p: float, intensity: float) -> float:
+    """
+    Menghitung Tanggapan Seleksi (R).
+    R = i * h^2 * sigma_p
+    """
+    return intensity * h2 * sd_p
+
+
+def calculate_inbreeding_depression(f_val: float, depression_rate: float) -> float:
+    """
+    Menghitung Depresi Inbreeding.
+    Penurunan performa = F * Laju Depresi (per 1% F)
+    """
+    return f_val * depression_rate
+
+
+def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
+    cols = [id_col, sire_col, dam_col]
+    if phenotype_col and phenotype_col in raw_df.columns:
+        cols.append(phenotype_col)
+        df = raw_df[cols].copy()
+        df.columns = ["Animal_ID", "Sire_ID", "Dam_ID", "Phenotype"]
+    else:
+        df = raw_df[cols].copy()
+        df.columns = ["Animal_ID", "Sire_ID", "Dam_ID"]
+
+    # Clean IDs but preserve Phenotype if it exists
+    for col in df.columns:
+        if col != "Phenotype":
+            df[col] = df[col].apply(clean_id)
+            
     df = df.dropna(subset=["Animal_ID"]).copy()
     if df.empty: raise ValueError("Tidak ada Animal_ID yang valid.")
     return df.reset_index(drop=True)
 
 
-def calculate(df_input):
+def klasifikasi_ternak(ebv: float, f_percent: float) -> str:
+    """Mengklasifikasikan ternak berdasarkan standar pemuliaan."""
+    if ebv > 0.5 and f_percent < 3.125:
+        return "Elite Stock / Pejantan Inti"
+    elif ebv > 0 and f_percent < 6.25:
+        return "Bibit (Breeding Stock)"
+    elif ebv > 1.0:
+        return "Galur Murni (Line Breeding)"
+    elif f_percent > 12.5:
+        return "Final Stock (Hanya Potong)"
+    else:
+        return "Komersial"
+
+
+def interpretasi_pemuliaan(ebv: float, f_percent: float, depression: float) -> str:
+    """Memberikan interpretasi komprehensif untuk nilai pemuliaan dan inbreeding."""
+    status_ebv = "Unggul" if ebv > 0 else "Di bawah rata-rata"
+    klasifikasi = klasifikasi_ternak(ebv, f_percent)
+    
+    msg = f"**Status Genetik:** {status_ebv} (EBV: {ebv:.2f}). "
+    msg += f"**Klasifikasi:** `{klasifikasi}`. "
+    
+    if klasifikasi == "Elite Stock / Pejantan Inti":
+        msg += "👑 **Rekomendasi:** Sangat ideal sebagai calon pejantan utama atau donor embrio. Pertahankan garis keturunan ini."
+    elif klasifikasi == "Bibit (Breeding Stock)":
+        msg += "✅ **Rekomendasi:** Cocok sebagai indukan pengganti (replacement) untuk menghasilkan generasi berikutnya."
+    elif klasifikasi == "Galur Murni (Line Breeding)":
+        msg += "🧬 **Rekomendasi:** Potensi genetik luar biasa. Jika inbreeding terkontrol, gunakan untuk fiksasi sifat unggul (Line Breeding)."
+    elif klasifikasi == "Final Stock (Hanya Potong)":
+        msg += "🥩 **Rekomendasi:** Tidak disarankan untuk dikembangbiakkan. Sebaiknya dijadikan ternak potong atau penggemukan karena risiko depresi inbreeding tinggi."
+    elif klasifikasi == "Komersial":
+        msg += "🐄 **Rekomendasi:** Layak untuk produksi komersial (susu/daging), namun tidak memiliki nilai genetik istimewa untuk perbaikan populasi."
+        
+    return msg
+
+
+def calculate_stats(df: pd.DataFrame):
+    """Menghitung korelasi dan regresi antara Inbreeding dan Fenotipe."""
+    try:
+        # Filter data yang memiliki fenotipe valid
+        valid_df = df[df["Phenotype"].apply(lambda x: not is_unknown(x))].copy()
+        if len(valid_df) < 3:
+            return None
+        
+        valid_df["Phenotype"] = pd.to_numeric(valid_df["Phenotype"])
+        valid_df["F"] = pd.to_numeric(valid_df["Inbreeding_%"])
+        
+        # Korelasi Pearson
+        correlation = valid_df["F"].corr(valid_df["Phenotype"])
+        
+        # Regresi Linear Sederhana (Y = a + bX)
+        # b = n(sigma XY) - (sigma X)(sigma Y) / n(sigma X^2) - (sigma X)^2
+        x = valid_df["F"]
+        y = valid_df["Phenotype"]
+        n = len(valid_df)
+        
+        b = (n * (x * y).sum() - x.sum() * y.sum()) / (n * (x**2).sum() - (x.sum())**2)
+        a = (y.sum() - b * x.sum()) / n
+        
+        r_squared = correlation**2
+        
+        return {
+            "correlation": correlation,
+            "b": b,
+            "a": a,
+            "r_squared": r_squared
+        }
+    except:
+        return None
+
+
+def calculate(df_input, h2=0.3, depression_rate=1.0):
     # 1. Identify missing founders
     animal_ids = set(df_input["Animal_ID"])
     parent_ids = set(df_input["Sire_ID"].dropna()).union(set(df_input["Dam_ID"].dropna()))
@@ -113,16 +239,21 @@ def calculate(df_input):
     
     # 2. Complete the pedigree
     founder_df = pd.DataFrame({"Animal_ID": missing, "Sire_ID": [None]*len(missing), "Dam_ID": [None]*len(missing)})
+    if "Phenotype" in df_input.columns:
+        founder_df["Phenotype"] = None
+        
     df_full = pd.concat([founder_df, df_input], ignore_index=True)
     
     # 3. Build lookup map
-    # CRITICAL: Convert all IDs to string and handle None/NaN consistently
     parents_map = {}
+    pheno_map = {}
     for row in df_full.itertuples(index=False):
         if row.Animal_ID:
             s_val = None if (row.Sire_ID is None or (isinstance(row.Sire_ID, float) and np.isnan(row.Sire_ID))) else str(row.Sire_ID)
             d_val = None if (row.Dam_ID is None or (isinstance(row.Dam_ID, float) and np.isnan(row.Dam_ID))) else str(row.Dam_ID)
             parents_map[str(row.Animal_ID)] = (s_val, d_val)
+            if hasattr(row, 'Phenotype'):
+                pheno_map[str(row.Animal_ID)] = row.Phenotype
             
     # 4. Topological Sort
     order = []
@@ -146,6 +277,10 @@ def calculate(df_input):
     A = np.zeros((n, n))
     rows = []
     
+    # Pre-calculate population average for EBV
+    pop_phenos = [pd.to_numeric(v) for v in pheno_map.values() if v is not None and not is_unknown(v)]
+    pop_avg = np.mean(pop_phenos) if pop_phenos else 0
+    
     for i, a in enumerate(order):
         s, d = parents_map.get(a, (None, None))
         si = idx_map.get(s) if s is not None else None
@@ -165,10 +300,26 @@ def calculate(df_input):
             
         A[i, i] = 1.0 + F
         
+        # EBV and Depression Calculation
+        p_val = pheno_map.get(a)
+        ebv = 0.0
+        depresi = calculate_inbreeding_depression(F * 100, depression_rate)
+        
+        if p_val is not None and not is_unknown(p_val):
+            try:
+                ebv = h2 * (float(p_val) - pop_avg)
+            except:
+                ebv = 0.0
+
         rows.append({
             "Animal_ID": a,
             "Sire_ID": s,
             "Dam_ID": d,
+            "Phenotype": show_value(p_val),
+            "EBV": round(ebv, 4),
+            "Depresi_Inbreeding": f"-{round(depresi, 4)}",
+            "Klasifikasi": klasifikasi_ternak(ebv, F * 100),
+            "Interpretasi_Pemuliaan": interpretasi_pemuliaan(ebv, F * 100, depresi),
             "Inbreeding_%": round(F * 100, 4),
             "Kondisi_Inbreeding": kondisi_inbreeding(F * 100),
             "Dampak_Biologis": dampak_inbreeding(F * 100),
@@ -192,11 +343,33 @@ def make_dot(result_df, max_nodes=150):
     df = result_df.head(max_nodes)
     animal_set = set(df["Animal_ID"].astype(str))
     dot = ["digraph Pedigree {", "rankdir=LR;", 'node [shape=box, style="rounded,filled", fontname="Arial"];']
+    
     for _, row in df.iterrows():
         a = dot_escape(row["Animal_ID"])
         f = float(row["Inbreeding_%"])
-        fill = "#FFE4E1" if f >= 25 else ("#FFF4CC" if f > 0 else "#FFFFFF")
-        dot.append(f'"{a}" [label="{a}\\nF={f:.2f}%", fillcolor="{fill}"];')
+        klasifikasi = row.get("Klasifikasi", "")
+        
+        # Penentuan Warna & Border
+        fill = "#FFFFFF"
+        border_color = "black"
+        penwidth = "1.0"
+        label_suffix = ""
+        
+        if f >= 25:
+            fill = "#FFE4E1" # Merah Muda (High Inbreeding)
+        elif f > 0:
+            fill = "#FFF4CC" # Kuning (Inbred)
+            
+        if klasifikasi == "Elite Stock / Pejantan Inti":
+            border_color = "#FFD700" # Gold
+            penwidth = "3.0"
+            label_suffix = "\\n👑 ELITE CORE"
+        elif klasifikasi == "Bibit (Breeding Stock)":
+            border_color = "#32CD32" # Lime Green
+            penwidth = "2.0"
+            
+        dot.append(f'"{a}" [label="{a}\\nF={f:.2f}%{label_suffix}", fillcolor="{fill}", color="{border_color}", penwidth="{penwidth}"];')
+        
     for _, row in df.iterrows():
         a, s, d = dot_escape(row["Animal_ID"]), row["Sire_ID"], row["Dam_ID"]
         if s and str(s) in animal_set: dot.append(f'"{dot_escape(s)}" -> "{a}" [label="sire"];')
@@ -296,21 +469,16 @@ def main():
         [data-testid="stMetricValue"] {
             font-size: 1.8rem !important;
             font-weight: 700 !important;
-            color: #1e3a8a !important; /* Biru gelap untuk kontras tinggi */
+            color: #1e3a8a !important;
         }
         [data-testid="stMetricLabel"] {
             font-size: 1rem !important;
             font-weight: 600 !important;
-            color: #374151 !important; /* Abu-abu gelap */
+            color: #374151 !important;
         }
-        /* Penyesuaian khusus untuk Mode Gelap agar tetap terbaca */
         @media (prefers-color-scheme: dark) {
-            [data-testid="stMetricValue"] {
-                color: #60a5fa !important; /* Biru terang untuk mode gelap */
-            }
-            [data-testid="stMetricLabel"] {
-                color: #e5e7eb !important; /* Abu-abu sangat terang */
-            }
+            [data-testid="stMetricValue"] { color: #60a5fa !important; }
+            [data-testid="stMetricLabel"] { color: #e5e7eb !important; }
         }
         .stMetric {
             background-color: rgba(255, 255, 255, 0.05);
@@ -318,20 +486,35 @@ def main():
             border-radius: 10px;
             border: 1px solid rgba(128, 128, 128, 0.2);
         }
-        h1, h2, h3 {
-            color: #1e3a8a;
+        /* Custom Tabs UI */
+        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #f1f5f9;
+            border-radius: 8px 8px 0 0;
+            padding: 10px 20px;
         }
         @media (prefers-color-scheme: dark) {
-            h1, h2, h3 {
-                color: #60a5fa;
-            }
+            .stTabs [data-baseweb="tab"] { background-color: #1e293b; }
         }
-        /* Footer style */
+        .stTabs [aria-selected="true"] {
+            background-color: #1e3a8a !important;
+            color: white !important;
+        }
+        .info-card {
+            background-color: #e0f2fe;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 5px solid #0284c7;
+            margin: 10px 0;
+            color: #0369a1;
+        }
+        h1, h2, h3 { color: #1e3a8a; }
+        @media (prefers-color-scheme: dark) {
+            h1, h2, h3 { color: #60a5fa; }
+        }
         .footer {
             position: fixed;
-            left: 0;
-            bottom: 0;
-            width: 100%;
+            left: 0; bottom: 0; width: 100%;
             background-color: transparent;
             color: #6b7280;
             text-align: center;
@@ -341,7 +524,8 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    st.title("🐄 Kalkulator Inbreeding Ternak")
+    st.title("🐄 Inbreeding & Breeding Insights")
+    st.markdown("Analisis silsilah, nilai pemuliaan, dan depresi inbreeding dalam satu platform.")
     st.markdown("---")
 
     with st.sidebar:
@@ -381,10 +565,25 @@ def main():
         id_col = st.selectbox("Kolom Animal_ID", cols, index=0)
         sire_col = st.selectbox("Kolom Sire_ID", cols, index=1 if len(cols)>1 else 0)
         dam_col = st.selectbox("Kolom Dam_ID", cols, index=2 if len(cols)>2 else 0)
+        
+        phenotype_col = st.selectbox(
+            "Kolom Fenotipe (Opsional)", 
+            ["-"] + cols, 
+            index=cols.index("Phenotype") + 1 if "Phenotype" in cols else 0,
+            help="Pilih kolom fenotipe untuk menghitung Nilai Pemuliaan (EBV)."
+        )
+        pheno_val = None if phenotype_col == "-" else phenotype_col
+
+        st.markdown("### 🧬 Parameter Genetik")
+        h2 = st.slider("Heritabilitas ($h^2$)", 0.0, 1.0, 0.3, 0.05)
+        depression_rate = st.slider("Laju Depresi Inbreeding (per 1% F)", 0.0, 5.0, 1.0, 0.1)
+        
+        st.markdown("### 🎯 Parameter Seleksi")
+        intensity = st.slider("Intensitas Seleksi (i)", 0.0, 3.0, 1.5, 0.1)
 
     try:
-        internal = standardize_input(raw_df, id_col, sire_col, dam_col)
-        std_df, res_df, matrix_df = calculate(internal)
+        internal = standardize_input(raw_df, id_col, sire_col, dam_col, pheno_val)
+        std_df, res_df, matrix_df = calculate(internal, h2=h2, depression_rate=depression_rate)
         
         res_display_data = res_df[res_df["Tipe_Data"] == "Data input"]
         
@@ -392,22 +591,93 @@ def main():
             st.subheader("📝 Ringkasan Data")
             
             # Metrics
-            m1, m2, m3, m4 = st.columns(4)
+            m0, m1, m2, m3, m4 = st.columns(5)
             total_sapi = len(res_display_data)
             inbred_sapi = len(res_display_data[res_display_data["Inbreeding_%"] > 0])
             avg_f = float(res_display_data["Inbreeding_%"].mean())
             max_f = float(res_display_data["Inbreeding_%"].max())
             
+            m0.metric("Heritabilitas ($h^2$)", f"{h2:.2f}")
             m1.metric("Total Populasi", f"{total_sapi} ekor")
             m2.metric("Sapi Inbred", f"{inbred_sapi} ekor")
             m3.metric("Rata-rata F", f"{avg_f:.2f}%")
             m4.metric("F Tertinggi", f"{max_f:.2f}%")
 
+            # Klasifikasi Summary
+            st.markdown("### 🏷️ Distribusi Klasifikasi Ternak")
+            dist = res_display_data["Klasifikasi"].value_counts()
+            c_dist = st.columns(len(dist))
+            for i, (label, count) in enumerate(dist.items()):
+                c_dist[i].metric(label, f"{count} ekor")
+
+            # Selection Response
+            if pheno_val:
+                st.markdown("---")
+                st.subheader("🎯 Estimasi Tanggapan Seleksi")
+                r1, r2, r3 = st.columns(3)
+                
+                # Filter valid phenotypes for SD calculation
+                valid_phenos = pd.to_numeric(res_display_data["Phenotype"], errors='coerce').dropna()
+                if not valid_phenos.empty:
+                    sd_p = valid_phenos.std()
+                    response = calculate_selection_response(h2, sd_p, intensity)
+                    
+                    r1.metric("Standar Deviasi Fenotipe", f"{sd_p:.2f}")
+                    r2.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
+                    r3.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
+                    
+                    # Hubungan Inbreeding vs Fenotipe (Korelasi & Regresi)
+                    st.markdown("---")
+                    st.subheader("📈 Analisis Hubungan Inbreeding vs Fenotipe")
+                    stats = calculate_stats(res_display_data)
+                    
+                    if stats:
+                        c_stat1, c_stat2, c_stat3 = st.columns(3)
+                        with c_stat1:
+                            st.metric("Korelasi (r)", f"{stats['correlation']:.4f}")
+                            st.caption("Hubungan antara tingkat inbreeding dan performa.")
+                        with c_stat2:
+                            st.metric("Regresi (b)", f"{stats['b']:.4f}")
+                            st.caption("Penurunan unit fenotipe per 1% kenaikan inbreeding.")
+                        with c_stat3:
+                            st.metric("Koefisien Determinasi ($R^2$)", f"{stats['r_squared']:.4f}")
+                            st.caption("Proporsi variasi fenotipe yang dipengaruhi inbreeding.")
+                        
+                        st.info(f"**Interpretasi Statis:** Persamaan regresi: $Y = {stats['a']:.2f} + ({stats['b']:.4f}) X$. "
+                                f"Artinya, setiap kenaikan 1% inbreeding diprediksi menurunkan fenotipe sebesar {abs(stats['b']):.4f} unit.")
+                    else:
+                        st.warning("Data tidak cukup untuk menghitung korelasi dan regresi (minimal 3 data dengan fenotipe).")
+                else:
+                    st.warning("Data fenotipe tidak valid untuk menghitung SD.")
+
             st.markdown("### 📋 Tabel Hasil Perhitungan")
             st.dataframe(clean_display(res_display_data), use_container_width=True, height=400)
             
+            # Detailed Interpretation for Selected Animal
+            st.markdown("---")
+            st.subheader("🧐 Interpretasi Individual")
+            selected_animal = st.selectbox("Pilih Sapi untuk Interpretasi Detail:", res_display_data["Animal_ID"])
+            if selected_animal:
+                row = res_display_data[res_display_data["Animal_ID"] == selected_animal].iloc[0]
+                st.write(f"**Individu:** {row['Animal_ID']}")
+                st.write(row["Interpretasi_Pemuliaan"])
+                st.markdown(f"""
+                - **Inbreeding:** {row['Inbreeding_%']}% ({row['Kondisi_Inbreeding']})
+                - **Dampak pada Performa:** Penurunan sebesar {row['Depresi_Inbreeding']} unit dari potensi aslinya.
+                - **Keterangan:** {row['Dampak_Biologis']}
+                """)
+            
             # Additional Information based on Max F
-            st.markdown("### 💡 Analisis Dampak Populasi")
+            st.markdown("### � Panduan Interpretasi")
+            with st.expander("Klik untuk memahami istilah pemuliaan"):
+                st.markdown("""
+                - **Koefisien Inbreeding (F):** Persentase kesamaan genetik akibat tetua yang berkerabat.
+                - **EBV (Estimated Breeding Value):** Nilai yang menunjukkan potensi genetik yang akan diturunkan ke anak. Semakin tinggi (positif), semakin baik.
+                - **Depresi Inbreeding:** Estimasi penurunan performa yang dialami individu karena inbreeding tinggi.
+                - **Tanggapan Seleksi (R):** Prediksi kemajuan kualitas populasi pada generasi berikutnya jika seleksi dilakukan.
+                """)
+            
+            st.markdown("### �💡 Analisis Dampak Populasi")
             st.info(dampak_inbreeding(max_f))
             
             # Download options
@@ -426,7 +696,31 @@ def main():
 
             # Extra Insights Section
             st.markdown("---")
-            st.markdown("### 💡 Wawasan & Strategi Manajemen")
+            st.markdown("### � Parameter Penting Pemuliaan Ternak")
+            
+            with st.expander("Lihat Detail Konsep Pemuliaan"):
+                col_i1, col_i2 = st.columns(2)
+                with col_i1:
+                    st.markdown("""
+                    **1. Heritabilitas ($h^2$):**
+                    Sejauh mana variasi fenotipe disebabkan oleh genetik aditif. 
+                    - Rendah (< 0.2): Lingkungan dominan (misal: reproduksi).
+                    - Sedang (0.2 - 0.4): Pertumbuhan.
+                    - Tinggi (> 0.4): Kualitas karkas/susu.
+                    
+                    **2. Nilai Pemuliaan (EBV):**
+                    Prediksi nilai genetik tetua yang akan diturunkan. EBV adalah dua kali nilai transmisi genetik (*Progeny Difference*).
+                    """)
+                with col_i2:
+                    st.markdown("""
+                    **3. Depresi Inbreeding:**
+                    Penurunan rata-rata performa akibat peningkatan homozigositas. Paling terlihat pada sifat-sifat dengan heritabilitas rendah (fertilitas, daya tahan hidup).
+                    
+                    **4. Intensitas Seleksi ($i$):**
+                    Kekuatan seleksi yang diterapkan. Semakin sedikit ternak yang terpilih sebagai tetua dari total populasi, semakin besar intensitasnya ($i$).
+                    """)
+
+            st.markdown("### �💡 Wawasan & Strategi Manajemen")
             
             col_in1, col_in2 = st.columns(2)
             
