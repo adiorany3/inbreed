@@ -558,45 +558,55 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # Custom CSS for Professional UI
+    # Custom DNA Lab Theme CSS
     st.markdown("""
         <style>
-        /* Global Styles */
-        .main { background-color: #fcfcfc; }
-        h1, h2, h3 { color: #0f172a; font-family: 'Inter', sans-serif; }
+        /* Global Laboratory Theme */
+        .main { 
+            background-color: #f0f4f8; 
+            background-image: radial-gradient(#d1dce5 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        h1, h2, h3 { 
+            color: #1e293b; 
+            font-family: 'Segoe UI', Roboto, Helvetica;
+            font-weight: 700;
+        }
         
-        /* Metric Styling */
+        /* DNA Metric Styling */
         [data-testid="stMetricValue"] {
-            font-size: 2rem !important;
+            font-size: 2.2rem !important;
             font-weight: 800 !important;
-            color: #2563eb !important;
+            color: #0d9488 !important; /* Teal DNA shade */
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
         }
         [data-testid="stMetricLabel"] {
-            font-size: 0.9rem !important;
+            font-size: 0.85rem !important;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: #64748b !important;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            color: #475569 !important;
         }
         
-        /* Modern Cards */
+        /* Laboratory Cards & UI Elements */
         .status-card {
             background: white;
             padding: 24px;
-            border-radius: 16px;
-            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            border-left: 5px solid #0d9488;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-            margin-bottom: 1rem;
+            margin-bottom: 20px;
         }
         .info-card {
-            background-color: #f0f9ff;
+            background-color: #f0fdfa;
             padding: 20px;
             border-radius: 12px;
-            border-left: 6px solid #0ea5e9;
-            color: #0c4a6e;
+            border-left: 6px solid #0d9488;
+            color: #0f766e;
             line-height: 1.6;
         }
         
-        /* Tabs Customization */
+        /* DNA Tabs Customization */
         .stTabs [data-baseweb="tab-list"] {
             gap: 24px;
             border-bottom: 2px solid #e2e8f0;
@@ -608,11 +618,16 @@ def main():
             color: #64748b;
         }
         .stTabs [aria-selected="true"] {
-            color: #2563eb !important;
-            border-bottom-color: #2563eb !important;
+            color: #0d9488 !important;
+            border-bottom-color: #0d9488 !important;
         }
         
-        /* Dark Mode Compatibility */
+        /* Dark Mode Compatibility Filter */
+        @media (prefers-color-scheme: dark) {
+            .main { background-color: #0f172a; }
+            .status-card { background: #1e293b; color: white; }
+            h1, h2, h3 { color: #f1f5f9; }
+        }
         @media (prefers-color-scheme: dark) {
             .main { background-color: #0f172a; }
             h1, h2, h3 { color: #f8fafc; }
@@ -623,20 +638,24 @@ def main():
         </style>
     """, unsafe_allow_html=True)
 
-    # Header Section
-    col_t1, col_t2 = st.columns([0.8, 0.2])
-    with col_t1:
-        st.title("🧬 Breeding & Inbreeding Analytics")
-        st.markdown("""
-            **Sistem Pengambilan Keputusan (DSS) Pemuliaan Ternak.**  
-            Analisis koefisien inbreeding, nilai pemuliaan (EBV), dan klasifikasi stok bibit berbasis data silsilah dan fenotipe.
-        """)
-    with col_t2:
-        st.image("https://cdn-icons-png.flaticon.com/512/2395/2395796.png", width=100)
-    
-    st.markdown("---")
+    # Header Section with DNA Lab Logo
+    st.markdown("""
+        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
+            <div style="font-size: 50px;">🧬</div>
+            <div>
+                <h1 style="margin: 0; padding: 0; line-height: 1;">DNA Breeding Lab</h1>
+                <p style="margin: 0; color: #64748b; font-size: 1.1rem;">Advanced Inbreeding & Genetic Selection Analytics</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     with st.sidebar:
+        st.markdown("""
+            <div style="background-color: #0d9488; padding: 15px; border-radius: 10px; color: white; margin-bottom: 20px;">
+                <h4 style="margin:0;">🧪 Control Panel</h4>
+                <p style="font-size: 0.8rem; margin:0; opacity: 0.8;">Laboratory Mode Active</p>
+            </div>
+        """, unsafe_allow_html=True)
         st.header("⚙️ Konfigurasi")
         mode = st.radio(
             "Pilih Sumber Data",
@@ -955,10 +974,10 @@ def main():
         st.error(f"⚠️ Terjadi kesalahan dalam pengolahan data: {e}")
         st.exception(e)
 
-    # Footer
+    # Footer DNA Signature
     st.markdown("""
         <div class="footer">
-            Developed with ❤️ | Created by Galuh Adi Insani
+            🧬 DNA Breeding Lab | Analytics Protocol v2.5 | Created by Galuh Adi Insani
         </div>
     """, unsafe_allow_html=True)
 
