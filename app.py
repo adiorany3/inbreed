@@ -79,15 +79,15 @@ def rekomendasi(percent: float) -> str:
 def dampak_inbreeding(percent: float) -> str:
     """Memberikan informasi tambahan mengenai dampak biologis berdasarkan persentase F."""
     if percent <= 0:
-        return "🧬 **Dampak:** Variabilitas genetik terjaga maksimal. Tidak ada risiko depresi inbreeding terdeteksi."
+        return "**Dampak:** Variabilitas genetik terjaga maksimal. Tidak ada risiko depresi inbreeding terdeteksi."
     elif percent < 6.25:
-        return "🌱 **Dampak:** Pengaruh minimal pada performa. Efek kumulatif mulai muncul jika terjadi terus-menerus dalam beberapa generasi."
+        return "**Dampak:** Pengaruh minimal pada performa. Efek kumulatif mulai muncul jika terjadi terus-menerus dalam beberapa generasi."
     elif percent < 12.5:
-        return "⚠️ **Dampak:** Potensi penurunan performa produksi (pertumbuhan, produksi susu) sekitar 2-5%. Sedikit peningkatan risiko penyakit genetik resesif."
+        return "**Dampak:** Potensi penurunan performa produksi (pertumbuhan, produksi susu) sekitar 2-5%. Sedikit peningkatan risiko penyakit genetik resesif."
     elif percent < 25:
-        return "❗ **Dampak:** Depresi inbreeding mulai terlihat nyata. Penurunan fertilitas, daya tahan tubuh melemah, dan potensi munculnya cacat lahir (lethal traits)."
+        return "**Dampak:** Depresi inbreeding mulai terlihat nyata. Penurunan fertilitas, daya tahan tubuh melemah, dan potensi munculnya cacat lahir (lethal traits)."
     else:
-        return "🚨 **Dampak Kritis:** Risiko tinggi kematian embrionik, infertilitas permanen, dan penurunan vitalitas yang drastis. Populasi dalam bahaya penurunan kualitas genetik permanen."
+        return "**Dampak Kritis:** Risiko tinggi kematian embrionik, infertilitas permanen, dan penurunan vitalitas yang drastis. Populasi dalam bahaya penurunan kualitas genetik permanen."
 
 
 def contoh_sapi_lengkap() -> pd.DataFrame:
@@ -194,22 +194,22 @@ def interpretasi_pemuliaan(ebv: float, f_percent: float, depression: float, anim
     if klasi_label := klasifikasi == "Elite Stock":
         if is_dam:
             msg += f"**Klasifikasi:** `Elite Stock (Betina Inti)`. "
-            msg += "👑💎 **Rekomendasi:** Sangat ideal sebagai indukan inti atau donor embrio (ET). Genetiknya sangat berharga untuk menghasilkan calon pejantan unggul."
+            msg += "Rekomendasi: Sangat ideal sebagai indukan inti atau donor embrio (ET). Genetiknya sangat berharga untuk menghasilkan calon pejantan unggul."
         else:
             msg += f"**Klasifikasi:** `Elite Stock (Pejantan Inti)`. "
-            msg += "👑 **Rekomendasi:** Sangat ideal sebagai calon pejantan utama atau sumber semen beku. Pertahankan garis keturunan ini."
+            msg += "Rekomendasi: Sangat ideal sebagai calon pejantan utama atau sumber semen beku. Pertahankan garis keturunan ini."
     elif klasifikasi == "Bibit (Breeding Stock)":
         msg += f"**Klasifikasi:** `{klasifikasi}`. "
-        msg += "✅ **Rekomendasi:** Cocok sebagai indukan pengganti (replacement) untuk menghasilkan generasi berikutnya."
+        msg += "Rekomendasi: Cocok sebagai indukan pengganti (replacement) untuk menghasilkan generasi berikutnya."
     elif klasifikasi == "Galur Murni (Line Breeding)":
         msg += f"**Klasifikasi:** `{klasifikasi}`. "
-        msg += "🧬 **Rekomendasi:** Potensi genetik luar biasa. Jika inbreeding terkontrol, gunakan untuk fiksasi sifat unggul (Line Breeding)."
+        msg += "Rekomendasi: Potensi genetik luar biasa. Jika inbreeding terkontrol, gunakan untuk fiksasi sifat unggul (Line Breeding)."
     elif klasifikasi == "Final Stock (Hanya Potong)":
         msg += f"**Klasifikasi:** `{klasifikasi}`. "
-        msg += "🥩 **Rekomendasi:** Tidak disarankan untuk dikembangbiakkan. Sebaiknya dijadikan ternak potong atau penggemukan karena risiko depresi inbreeding tinggi."
+        msg += "Rekomendasi: Tidak disarankan untuk dikembangbiakkan. Sebaiknya dijadikan ternak potong atau penggemukan karena risiko depresi inbreeding tinggi."
     else:
         msg += f"**Klasifikasi:** `{klasifikasi}`. "
-        msg += "🐄 **Rekomendasi:** Layak untuk produksi komersial (susu/daging), namun tidak memiliki nilai genetik istimewa untuk perbaikan populasi."
+        msg += "Rekomendasi: Layak untuk produksi komersial (susu/daging), namun tidak memiliki nilai genetik istimewa untuk perbaikan populasi."
         
     return msg
 
@@ -372,7 +372,7 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
             # Cek apakah bapak adalah bapak dari ibunya (Inbreeding 25% atau lebih)
             grand_sire_of_dam, grand_dam_of_dam = parents_map.get(str(dam), (None, None))
             if str(sire) == str(grand_sire_of_dam):
-                res_df.at[idx, "Peringatan_Reproduksi"] = "⚠️ PERKAWINAN BAPAK-ANAK TERDETEKSI"
+                res_df.at[idx, "Peringatan_Reproduksi"] = "PERKAWINAN BAPAK-ANAK TERDETEKSI"
 
     return clean_display(df_input), res_df, pd.DataFrame(A, index=order, columns=order)
 
@@ -412,9 +412,9 @@ def make_dot(result_df, max_nodes=50):
             border_color = "#FFD700" # Gold
             penwidth = "3.0"
             if "Betina Inti" in interpretasi:
-                label_suffix = "\\n👑💎 ELITE FEMALE"
+                label_suffix = "\\nELITE FEMALE"
             else:
-                label_suffix = "\\n👑 ELITE MALE"
+                label_suffix = "\\nELITE MALE"
         elif klasifikasi == "Bibit (Breeding Stock)":
             border_color = "#32CD32" # Lime Green
             penwidth = "2.0"
@@ -565,7 +565,6 @@ def generate_pdf(result_df, settings=None):
 def main():
     st.set_page_config(
         page_title="Breeding & Inbreeding Analytics",
-        page_icon="🧬",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -693,7 +692,7 @@ def main():
     """, unsafe_allow_html=True)
 
     with st.sidebar:
-        st.markdown('<div class="sidebar-header">⚙️ CONFIGURATION</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-header">CONFIGURATION</div>', unsafe_allow_html=True)
         mode = st.radio(
             "Select Data Source",
             ["Contoh sapi lengkap", "Unggah file sendiri"],
@@ -721,12 +720,12 @@ def main():
 
     # Optimization Warning for Large Data
     if len(raw_df) > 500:
-        st.warning(f"⚠️ **Data Besar Terdeteksi ({len(raw_df)} baris):** Matriks hubungan aditif sedang dihitung menggunakan akselerasi NumPy. Mohon tunggu sebentar.")
+        st.warning(f"Data Besar Terdeteksi ({len(raw_df)} baris): Matriks hubungan aditif sedang dihitung menggunakan akselerasi NumPy. Mohon tunggu sebentar.")
 
     cols = list(raw_df.columns)
     
     with st.sidebar:
-        st.markdown("### 🔍 Pemetaan Kolom")
+        st.markdown("### Search Pemetaan Kolom")
         id_col = st.selectbox("Kolom Animal_ID", cols, index=0)
         sire_col = st.selectbox("Kolom Sire_ID", cols, index=1 if len(cols)>1 else 0)
         dam_col = st.selectbox("Kolom Dam_ID", cols, index=2 if len(cols)>2 else 0)
@@ -739,11 +738,11 @@ def main():
         )
         pheno_val = None if phenotype_col == "-" else phenotype_col
 
-        st.markdown("### 🧬 Parameter Genetik")
+        st.markdown("### Parameter Genetik")
         h2 = st.slider("Heritabilitas ($h^2$)", 0.0, 1.0, 0.3, 0.05)
         depression_rate = st.slider("Laju Depresi Inbreeding (per 1% F)", 0.0, 5.0, 1.0, 0.1)
         
-        st.markdown("### 🎯 Parameter Seleksi")
+        st.markdown("### Parameter Seleksi")
         intensity = st.slider("Intensitas Seleksi (i)", 0.0, 3.0, 1.5, 0.1)
 
     try:
@@ -753,10 +752,10 @@ def main():
         res_display_data = res_df[res_df["Tipe_Data"] == "Data input"]
         
         # Define tabs
-        tabs = st.tabs(["📊 Hasil & Analisis", "📈 Visualisasi Genetik", "🖇️ Bagan Pedigree", "🔢 Matriks Hubungan (A)"])
+        tabs = st.tabs(["Hasil & Analisis", "Visualisasi Genetik", "Bagan Pedigree", "Matriks Hubungan (A)"])
 
         with tabs[0]:
-            st.subheader("📝 Ringkasan Data")
+            st.subheader("Ringkasan Data")
             
             # Metrics
             m0, m1, m2, m3, m4 = st.columns(5)
@@ -772,7 +771,7 @@ def main():
             m4.metric("F Tertinggi", f"{max_f:.2f}%")
 
             # Klasifikasi Summary
-            st.markdown("### 🏷️ Distribusi Klasifikasi Ternak")
+            st.markdown("### Distribusi Klasifikasi Ternak")
             dist = res_display_data["Klasifikasi"].value_counts()
             
             # Cek apakah ada Elite Stock
@@ -787,16 +786,16 @@ def main():
                 if label == "Elite Stock":
                     m_count = sum("Pejantan Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
                     f_count = sum("Betina Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
-                    display_label = f"Elite (♂:{m_count}, ♀:{f_count})"
+                    display_label = f"Elite (M:{m_count}, F:{f_count})"
                 c_dist[i].metric(display_label, f"{count} ekor")
 
             # Saran jika tidak ada Elite Stock
             if not has_elite:
-                st.warning("⚠️ **Peringatan:** Tidak ditemukan **Elite Stock** dalam populasi ini.")
+                st.warning("Peringatan: Tidak ditemukan Elite Stock dalam populasi ini.")
                 with st.container():
                     st.markdown("""
                     <div class="info-card">
-                    <b>💡 Saran Perbaikan Genetik:</b><br/>
+                    <b>Saran Perbaikan Genetik:</b><br/>
                     Karena populasi saat ini tidak memiliki individu dengan potensi genetik 'Elite' (EBV tinggi & Inbreeding rendah), berikut langkah yang disarankan:
                     <ol>
                         <li><b>Outcrossing:</b> Datangkan pejantan dari luar (atau semen beku) yang memiliki nilai pemuliaan teruji namun tidak memiliki hubungan kekerabatan dengan indukan saat ini.</li>
@@ -810,7 +809,7 @@ def main():
             # Selection Response
             if pheno_val:
                 st.markdown("---")
-                st.subheader("🎯 Estimasi Tanggapan Seleksi")
+                st.subheader("Estimasi Tanggapan Seleksi")
                 r1, r2, r3 = st.columns(3)
                 
                 # Filter valid phenotypes for SD calculation
@@ -830,7 +829,7 @@ def main():
                     backcross_cases = res_display_data[res_display_data["Peringatan_Reproduksi"] != ""]
                     if not backcross_cases.empty:
                         st.markdown("---")
-                        st.error(f"🚨 **Terdeteksi {len(backcross_cases)} Kasus Perkawinan Bapak-Anak (Backcross)**")
+                        st.error(f"Terdeteksi {len(backcross_cases)} Kasus Perkawinan Bapak-Anak (Backcross)")
                         
                         cols_back = st.columns(2)
                         with cols_back[0]:
@@ -840,7 +839,7 @@ def main():
                         with cols_back[1]:
                             st.markdown("""
                             <div class="info-card" style="border-left: 4px solid #ef4444;">
-                            <b>🛡️ Insight Manajemen Reproduksi & IB:</b><br/>
+                            <b>Insight Manajemen Reproduksi & IB:</b><br/>
                             Perkawinan bapak dengan anak kandungnya menghasilkan koefisien inbreeding (F) minimal <b>25%</b>.
                             <ul>
                                 <li><b>Risiko Utama:</b> Penurunan vitalitas drastis, risiko cacat bawaan tinggi, dan depresi inbreeding pada performa pertumbuhan/susu.</li>
@@ -857,7 +856,7 @@ def main():
 
                     # Hubungan Inbreeding vs Fenotipe (Korelasi & Regresi)
                     st.markdown("---")
-                    st.subheader("📈 Analisis Hubungan Inbreeding vs Fenotipe")
+                    st.subheader("Analisis Hubungan Inbreeding vs Fenotipe")
                     stats = calculate_stats(res_display_data)
                     
                     if stats:
@@ -879,7 +878,7 @@ def main():
                 else:
                     st.warning("Data fenotipe tidak valid untuk menghitung SD.")
 
-            st.markdown("### 📋 Tabel Hasil Perhitungan")
+            st.markdown("###  Tabel Hasil Perhitungan")
             # Gunakan st.dataframe dengan height tetap untuk scrolling virtualized
             st.dataframe(clean_display(res_display_data), use_container_width=True, height=500)
             
@@ -887,7 +886,7 @@ def main():
             st.markdown("---")
             col_sel1, col_sel2 = st.columns([0.4, 0.6])
             with col_sel1:
-                st.subheader("🧐 Interpretasi Individual")
+                st.subheader(" Interpretasi Individual")
                 selected_animal = st.selectbox("Pilih Sapi:", res_display_data["Animal_ID"])
             
             if selected_animal:
@@ -901,7 +900,7 @@ def main():
                     """)
             
             # Additional Information based on Max F
-            st.markdown("### � Panduan Interpretasi")
+            st.markdown("###  Panduan Interpretasi")
             with st.expander("Klik untuk memahami istilah pemuliaan"):
                 st.markdown("""
                 - **Koefisien Inbreeding (F):** Persentase kesamaan genetik akibat tetua yang berkerabat.
@@ -910,26 +909,26 @@ def main():
                 - **Tanggapan Seleksi (R):** Prediksi kemajuan kualitas populasi pada generasi berikutnya jika seleksi dilakukan.
                 """)
             
-            st.markdown("### �💡 Analisis Dampak Populasi")
+            st.markdown("###  Analisis Dampak Populasi")
             st.info(dampak_inbreeding(max_f))
             
             # Download options
-            st.markdown("### 📥 Unduh Laporan")
+            st.markdown("###  Unduh Laporan")
             c1, c2, c3 = st.columns(3)
             csv = clean_display(res_df).to_csv(index=False).encode('utf-8')
-            c1.download_button("📂 CSV (Data Lengkap)", csv, "analytics_data.csv", "text/csv", use_container_width=True)
+            c1.download_button(" CSV (Data Lengkap)", csv, "analytics_data.csv", "text/csv", use_container_width=True)
             
             # PDF Report
             pdf_data = generate_pdf(res_display_data)
-            c2.download_button("📄 PDF (Laporan Resmi)", pdf_data, "Breeding_Report.pdf", "application/pdf", use_container_width=True)
+            c2.download_button(" PDF (Laporan Resmi)", pdf_data, "Breeding_Report.pdf", "application/pdf", use_container_width=True)
             
             # Simple Text Report
             txt_report = dots_to_pedigree(res_display_data)
-            c3.download_button("📝 TXT (Ringkasan Cepat)", txt_report.encode('utf-8'), "summary.txt", "text/plain", use_container_width=True)
+            c3.download_button(" TXT (Ringkasan Cepat)", txt_report.encode('utf-8'), "summary.txt", "text/plain", use_container_width=True)
 
             # Extra Insights Section
             st.markdown("---")
-            st.markdown("### � Parameter Penting Pemuliaan Ternak")
+            st.markdown("###  Parameter Penting Pemuliaan Ternak")
             
             with st.expander("Lihat Detail Konsep Pemuliaan"):
                 col_i1, col_i2 = st.columns(2)
@@ -960,13 +959,13 @@ def main():
                     Kekuatan seleksi yang diterapkan. Semakin sedikit ternak yang terpilih sebagai tetua dari total populasi, semakin besar intensitasnya ($i$).
                     """)
 
-            st.markdown("### �💡 Wawasan & Strategi Manajemen")
+            st.markdown("###  Wawasan & Strategi Manajemen")
             
             col_in1, col_in2 = st.columns(2)
             
             with col_in1:
                 st.info("""
-                **🧬 Mengapa Inbreeding Berbahaya?**
+                ** Mengapa Inbreeding Berbahaya?**
                 Inbreeding meningkatkan peluang munculnya gen resesif yang merugikan. Hal ini menyebabkan:
                 - **Penurunan Vitalitas:** Ternak lebih mudah sakit.
                 - **Masalah Reproduksi:** Jarak beranak (calving interval) lebih lama.
@@ -975,19 +974,19 @@ def main():
                 
             with col_in2:
                 st.success("""
-                **🛡️ Strategi Pencegahan**
+                ** Strategi Pencegahan**
                 1. **Rotasi Pejantan:** Ganti pejantan setiap 2 tahun atau setelah anak betina pertamanya masuk usia kawin.
                 2. **Outcrossing:** Kawinkan ternak dengan individu dari kelompok/populasi lain yang tidak berhubungan.
                 3. **Digital Recording:** Gunakan sistem ini secara rutin untuk simulasi sebelum mengawinkan ternak.
                 """)
 
         with tabs[1]:
-            st.subheader("📈 Visualisasi Distribusi Genetik")
+            st.subheader(" Visualisasi Distribusi Genetik")
             
             v_col1, v_col2 = st.columns(2)
             
             with v_col1:
-                st.markdown("### 🧬 Distribusi Inbreeding (F)")
+                st.markdown("###  Distribusi Inbreeding (F)")
                 # Histogram data F
                 f_data = res_display_data["Inbreeding_%"]
                 counts, bin_edges = np.histogram(f_data, bins=10)
@@ -999,14 +998,14 @@ def main():
                 st.caption("Grafik ini menunjukkan sebaran tingkat inbreeding dalam populasi.")
 
             with v_col2:
-                st.markdown("### 🐄 Potensi Genetik (EBV)")
+                st.markdown("###  Potensi Genetik (EBV)")
                 # Bar chart for top 10 EBVs
                 top_ebv = res_display_data.sort_values("EBV", ascending=False).head(10)
                 st.bar_chart(top_ebv.set_index("Animal_ID")["EBV"])
                 st.caption("10 ternak dengan Nilai Pemuliaan (EBV) tertinggi.")
 
             st.markdown("---")
-            st.markdown("### 📉 Hubungan Inbreeding vs Fenotipe")
+            st.markdown("###  Hubungan Inbreeding vs Fenotipe")
             # Scatter plot using Streamlit's native chart
             # We add a small jitter if needed, but simple scatter 
             scatter_data = res_display_data[res_display_data["Phenotype"].apply(lambda x: not is_unknown(x))].copy()
@@ -1024,23 +1023,23 @@ def main():
                 st.info("Data fenotipe tidak tersedia untuk visualisasi sebaran.")
 
         with tabs[2]:
-            st.subheader("🖇️ Visualisasi Bagan Pedigree")
+            st.subheader(" Visualisasi Bagan Pedigree")
             if len(res_df) > 100:
-                st.info("💡 **Catatan:** Karena data melebihi 100 ekor, visualisasi hanya menampilkan 50 individu pertama untuk menjaga performa.")
+                st.info(" **Catatan:** Karena data melebihi 100 ekor, visualisasi hanya menampilkan 50 individu pertama untuk menjaga performa.")
             st.markdown("Bagan ini menunjukkan hubungan keturunan antar sapi. Warna merah menunjukkan inbreeding tinggi (>25%).")
             st.graphviz_chart(make_dot(res_df))
 
         with tabs[3]:
-            st.subheader("🔢 Matriks Hubungan Aditif")
+            st.subheader(" Matriks Hubungan Aditif")
             if len(matrix_df) > 500:
-                st.warning("⚠️ **Peringatan Performa:** Menampilkan matriks > 500x500 di browser dapat menyebabkan keterlambatan (lag). Disarankan untuk mengunduh CSV jika data sangat besar.")
+                st.warning(" **Peringatan Performa:** Menampilkan matriks > 500x500 di browser dapat menyebabkan keterlambatan (lag). Disarankan untuk mengunduh CSV jika data sangat besar.")
                 if st.button("Tampilkan Matriks Tetap"):
                     st.dataframe(matrix_df, use_container_width=True)
             else:
                 st.dataframe(matrix_df, use_container_width=True)
         
     except Exception as e:
-        st.error(f"⚠️ Terjadi kesalahan dalam pengolahan data: {e}")
+        st.error(f" Terjadi kesalahan dalam pengolahan data: {e}")
         st.exception(e)
 
     # Footer
