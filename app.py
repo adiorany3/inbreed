@@ -339,12 +339,27 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
             except:
                 ebv = 0.0
 
+        # HITUNG NILAI HETEROSIS (H)
+        # H = P_anak - 0.5 * (P_sire + P_dam)
+        heterosis = 0.0
+        if si is not None and di is not None and p_val is not None and not is_unknown(p_val):
+            p_sire = pheno_map.get(order[si])
+            p_dam = pheno_map.get(order[di])
+            if p_sire is not None and not is_unknown(p_sire) and p_dam is not None and not is_unknown(p_dam):
+                try:
+                    p_anak = float(p_val)
+                    p_avg_parents = 0.5 * (float(p_sire) + float(p_dam))
+                    heterosis = p_anak - p_avg_parents
+                except:
+                    heterosis = 0.0
+
         rows.append({
             "Animal_ID": order[i],
             "Sire_ID": parents_map.get(order[i])[0],
             "Dam_ID": parents_map.get(order[i])[1],
             "Phenotype": show_value(p_val),
             "EBV": round(float(ebv), 4),
+            "Heterosis": round(float(heterosis), 4),
             "Depresi_Inbreeding": f"-{round(float(depresi), 4)}",
             "Inbreeding_%": round(float(F * 100), 4),
             "Tipe_Data": "Founder tambahan" if order[i] in missing else "Data input"
@@ -815,9 +830,15 @@ def main():
                     
                     r1.metric("Rata-rata Fenotipe", f"{avg_p:.2f}")
                     r2.metric("Standar Deviasi Fenotipe", f"{sd_p:.2f}")
-                    r1_sub, r2_sub = st.columns(2)
+                    r1_sub, r2_sub, r3_sub = st.columns(3)
                     r1_sub.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
-                    r2_sub.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
+                    
+                    # Heterosis Rata-rata
+                    valid_heterosis = res_display_data[res_display_data["Heterosis"] != 0]["Heterosis"]
+                    avg_h = valid_heterosis.mean() if not valid_heterosis.empty else 0.0
+                    r2_sub.metric("Rata-rata Heterosis", f"{avg_h:.4f}")
+                    
+                    r3_sub.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
                     
                     # Backcross/Sire-Daughter Alert Section
                     backcross_cases = res_display_data[res_display_data["Peringatan_Reproduksi"] != ""]
@@ -919,6 +940,38 @@ def main():
             # Simple Text Report
             txt_report = dots_to_pedigree(res_display_data)
             c3.download_button(" TXT (Ringkasan Cepat)", txt_report.encode('utf-8'), "summary.txt", "text/plain", use_container_width=True)
+
+            # --- BAGIAN SELEKSI & CULLING ---
+            st.markdown("---")
+            st.subheader("Rekomendasi Seleksi & Culling")
+            
+            # Kriteria Seleksi: Top 25% EBV & Inbreeding Rendah
+            threshold_ebv = res_display_data["EBV"].quantile(0.75)
+            seleksi_df = res_display_data[
+                (res_display_data["EBV"] >= threshold_ebv) & 
+                (res_display_data["Inbreeding_%"] < 6.25)
+            ].sort_values("EBV", ascending=False)
+            
+            # Kriteria Culling: Inbreeding Sangat Tinggi ATAU Perkawinan Bapak-Anak ATAU EBV sangat rendah (Bottom 10%)
+            threshold_low_ebv = res_display_data["EBV"].quantile(0.10)
+            culling_df = res_display_data[
+                (res_display_data["Inbreeding_%"] >= 25) | 
+                (res_display_data["Peringatan_Reproduksi"] != "") |
+                (res_display_data["EBV"] <= threshold_low_ebv)
+            ].sort_values("Inbreeding_%", ascending=False)
+            
+            col_sel_recom, col_cul_recom = st.columns(2)
+            
+            with col_sel_recom:
+                st.success(f"**Kandidat Seleksi (Tetua Generasi Berikutnya): {len(seleksi_df)} ekor**")
+                st.write("Prioritas berdasarkan EBV tinggi dan risiko inbreeding rendah.")
+                st.dataframe(seleksi_df[["Animal_ID", "EBV", "Inbreeding_%", "Klasifikasi"]], hide_index=True)
+                
+            with col_cul_recom:
+                st.error(f"**Kandidat Culling (Ternak Potong/Keluar): {len(culling_df)} ekor**")
+                st.write("Berdasarkan inbreeding ekstrem, kasus backcross, atau potensi genetik sangat rendah.")
+                st.dataframe(culling_df[["Animal_ID", "EBV", "Inbreeding_%", "Peringatan_Reproduksi"]], hide_index=True)
+            # ---------------------------------
 
             # Extra Insights Section
             st.markdown("---")
