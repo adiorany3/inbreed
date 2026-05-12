@@ -160,10 +160,12 @@ def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
     return df.reset_index(drop=True)
 
 
-def klasifikasi_ternak(ebv: float, f_percent: float) -> str:
+def klasifikasi_ternak(ebv: float, f_percent: float, dam_id: Optional[str] = None) -> str:
     """Mengklasifikasikan ternak berdasarkan standar pemuliaan."""
+    # Deteksi jenis kelamin berdasarkan Dam_ID (jika ada data silsilah lengkap di row)
+    # Namun karena ini dipanggil per baris, kita asumsikan klasifikasi utama:
     if ebv > 0.5 and f_percent < 3.125:
-        return "Elite Stock / Pejantan Inti"
+        return "Elite Stock"
     elif ebv > 0 and f_percent < 6.25:
         return "Bibit (Breeding Stock)"
     elif ebv > 1.0:
@@ -174,23 +176,36 @@ def klasifikasi_ternak(ebv: float, f_percent: float) -> str:
         return "Komersial"
 
 
-def interpretasi_pemuliaan(ebv: float, f_percent: float, depression: float) -> str:
+def interpretasi_pemuliaan(ebv: float, f_percent: float, depression: float, animal_id: str, results_df: Optional[pd.DataFrame] = None) -> str:
     """Memberikan interpretasi komprehensif untuk nilai pemuliaan dan inbreeding."""
     status_ebv = "Unggul" if ebv > 0 else "Di bawah rata-rata"
     klasifikasi = klasifikasi_ternak(ebv, f_percent)
     
+    # Deteksi apakah ini Betina (ada di kolom Dam_ID di populasi)
+    is_dam = False
+    if results_df is not None:
+        is_dam = animal_id in results_df["Dam_ID"].values
+
     msg = f"**Status Genetik:** {status_ebv} (EBV: {ebv:.2f}). "
-    msg += f"**Klasifikasi:** `{klasifikasi}`. "
     
-    if klasifikasi == "Elite Stock / Pejantan Inti":
-        msg += "👑 **Rekomendasi:** Sangat ideal sebagai calon pejantan utama atau donor embrio. Pertahankan garis keturunan ini."
+    if klasi_label := klasifikasi == "Elite Stock":
+        if is_dam:
+            msg += f"**Klasifikasi:** `Elite Stock (Betina Inti)`. "
+            msg += "👑💎 **Rekomendasi:** Sangat ideal sebagai indukan inti atau donor embrio (ET). Genetiknya sangat berharga untuk menghasilkan calon pejantan unggul."
+        else:
+            msg += f"**Klasifikasi:** `Elite Stock (Pejantan Inti)`. "
+            msg += "👑 **Rekomendasi:** Sangat ideal sebagai calon pejantan utama atau sumber semen beku. Pertahankan garis keturunan ini."
     elif klasifikasi == "Bibit (Breeding Stock)":
+        msg += f"**Klasifikasi:** `{klasifikasi}`. "
         msg += "✅ **Rekomendasi:** Cocok sebagai indukan pengganti (replacement) untuk menghasilkan generasi berikutnya."
     elif klasifikasi == "Galur Murni (Line Breeding)":
+        msg += f"**Klasifikasi:** `{klasifikasi}`. "
         msg += "🧬 **Rekomendasi:** Potensi genetik luar biasa. Jika inbreeding terkontrol, gunakan untuk fiksasi sifat unggul (Line Breeding)."
     elif klasifikasi == "Final Stock (Hanya Potong)":
+        msg += f"**Klasifikasi:** `{klasifikasi}`. "
         msg += "🥩 **Rekomendasi:** Tidak disarankan untuk dikembangbiakkan. Sebaiknya dijadikan ternak potong atau penggemukan karena risiko depresi inbreeding tinggi."
-    elif klasifikasi == "Komersial":
+    else:
+        msg += f"**Klasifikasi:** `{klasifikasi}`. "
         msg += "🐄 **Rekomendasi:** Layak untuk produksi komersial (susu/daging), namun tidak memiliki nilai genetik istimewa untuk perbaikan populasi."
         
     return msg
@@ -319,16 +334,22 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
             "Phenotype": show_value(p_val),
             "EBV": round(ebv, 4),
             "Depresi_Inbreeding": f"-{round(depresi, 4)}",
-            "Klasifikasi": klasifikasi_ternak(ebv, F * 100),
-            "Interpretasi_Pemuliaan": interpretasi_pemuliaan(ebv, F * 100, depresi),
             "Inbreeding_%": round(F * 100, 4),
-            "Kondisi_Inbreeding": kondisi_inbreeding(F * 100),
-            "Dampak_Biologis": dampak_inbreeding(F * 100),
-            "Rekomendasi": rekomendasi(F * 100),
             "Tipe_Data": "Founder tambahan" if a in missing else "Data input"
         })
     
     res_df = pd.DataFrame(rows)
+
+    # Post-process to add classification and interpretation with full population context
+    res_df["Klasifikasi"] = res_df.apply(lambda r: klasifikasi_ternak(r["EBV"], r["Inbreeding_%"]), axis=1)
+    res_df["Interpretasi_Pemuliaan"] = res_df.apply(
+        lambda r: interpretasi_pemuliaan(r["EBV"], r["Inbreeding_%"], float(r["Depresi_Inbreeding"]), r["Animal_ID"], res_df), 
+        axis=1
+    )
+    res_df["Kondisi_Inbreeding"] = res_df["Inbreeding_%"].apply(kondisi_inbreeding)
+    res_df["Dampak_Biologis"] = res_df["Inbreeding_%"].apply(dampak_inbreeding)
+    res_df["Rekomendasi"] = res_df["Inbreeding_%"].apply(rekomendasi)
+
     return clean_display(df_input), res_df, pd.DataFrame(A, index=order, columns=order)
 
 
@@ -349,6 +370,7 @@ def make_dot(result_df, max_nodes=150):
         a = dot_escape(row["Animal_ID"])
         f = float(row["Inbreeding_%"])
         klasifikasi = row.get("Klasifikasi", "")
+        interpretasi = str(row.get("Interpretasi_Pemuliaan", ""))
         
         # Penentuan Warna & Border
         fill = "#FFFFFF"
@@ -361,10 +383,13 @@ def make_dot(result_df, max_nodes=150):
         elif f > 0:
             fill = "#FFF4CC" # Kuning (Inbred)
             
-        if klasifikasi == "Elite Stock / Pejantan Inti":
+        if klasifikasi == "Elite Stock":
             border_color = "#FFD700" # Gold
             penwidth = "3.0"
-            label_suffix = "\\n👑 ELITE CORE"
+            if "Betina Inti" in interpretasi:
+                label_suffix = "\\n👑💎 ELITE FEMALE"
+            else:
+                label_suffix = "\\n👑 ELITE MALE"
         elif klasifikasi == "Bibit (Breeding Stock)":
             border_color = "#32CD32" # Lime Green
             penwidth = "2.0"
@@ -612,11 +637,19 @@ def main():
             dist = res_display_data["Klasifikasi"].value_counts()
             
             # Cek apakah ada Elite Stock
-            has_elite = "Elite Stock / Pejantan Inti" in dist.index
+            has_elite_male = any("Pejantan Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
+            has_elite_female = any("Betina Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
+            has_elite = has_elite_male or has_elite_female
             
             c_dist = st.columns(len(dist))
             for i, (label, count) in enumerate(dist.items()):
-                c_dist[i].metric(label, f"{count} ekor")
+                # Tampilkan detail gender jika label adalah Elite Stock
+                display_label = label
+                if label == "Elite Stock":
+                    m_count = sum("Pejantan Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
+                    f_count = sum("Betina Inti" in str(x) for x in res_display_data["Interpretasi_Pemuliaan"])
+                    display_label = f"Elite (♂:{m_count}, ♀:{f_count})"
+                c_dist[i].metric(display_label, f"{count} ekor")
 
             # Saran jika tidak ada Elite Stock
             if not has_elite:
