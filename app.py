@@ -1,4 +1,7 @@
 import io
+import tempfile
+import pathlib
+import graphviz
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -7,7 +10,7 @@ import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 
 
 # ============================================================
@@ -287,37 +290,46 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
         order.append(a)
     for a in list(parents_map.keys()): visit(a)
     
-    # 5. Relationship Matrix (A) Perhitungan
+    # 5. Relationship Matrix (A) Perhitungan - OPTIMIZED FOR NUMPY (Henderson's Method)
     n = len(order)
     idx_map = {a: i for i, a in enumerate(order)}
-    A = np.zeros((n, n))
+    A = np.zeros((n, n), dtype=np.float32)
     rows = []
     
     # Pre-calculate population average for EBV
     pop_phenos = [pd.to_numeric(v) for v in pheno_map.values() if v is not None and not is_unknown(v)]
     pop_avg = np.mean(pop_phenos) if pop_phenos else 0
     
-    for i, a in enumerate(order):
+    # Map parents to indices once
+    parent_indices = []
+    for a in order:
         s, d = parents_map.get(a, (None, None))
         si = idx_map.get(s) if s is not None else None
         di = idx_map.get(d) if d is not None else None
+        parent_indices.append((si, di))
+
+    # Pre-calculate matrix to avoid slow nested loops for large data
+    # Matrix A is symmetric, values only depend on ancestors (already in order)
+    for i in range(n):
+        si, di = parent_indices[i]
         
-        # OFF-DIAGONAL: A[i,j] = 0.5(A[si,j] + A[di,j])
-        for j in range(i):
-            val = 0.0
-            if si is not None: val += 0.5 * A[si, j]
-            if di is not None: val += 0.5 * A[di, j]
-            A[i, j] = A[j, i] = val
-            
-        # DIAGONAL: A[i,i] = 1 + F_i where F_i = 0.5 * A[si, di]
-        F = 0.0
+        # OFF-DIAGONAL using vector operations for rows 0 to i-1
         if si is not None and di is not None:
+            A[i, 0:i] = A[0:i, i] = 0.5 * (A[si, 0:i] + A[di, 0:i])
             F = 0.5 * A[si, di]
+        elif si is not None:
+            A[i, 0:i] = A[0:i, i] = 0.5 * A[si, 0:i]
+            F = 0.0
+        elif di is not None:
+            A[i, 0:i] = A[0:i, i] = 0.5 * A[di, 0:i]
+            F = 0.0
+        else:
+            F = 0.0
             
         A[i, i] = 1.0 + F
         
-        # EBV and Depression Calculation
-        p_val = pheno_map.get(a)
+        # Data preparation for results
+        p_val = pheno_map.get(order[i])
         ebv = 0.0
         depresi = calculate_inbreeding_depression(F * 100, depression_rate)
         
@@ -328,14 +340,14 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
                 ebv = 0.0
 
         rows.append({
-            "Animal_ID": a,
-            "Sire_ID": s,
-            "Dam_ID": d,
+            "Animal_ID": order[i],
+            "Sire_ID": parents_map.get(order[i])[0],
+            "Dam_ID": parents_map.get(order[i])[1],
             "Phenotype": show_value(p_val),
-            "EBV": round(ebv, 4),
-            "Depresi_Inbreeding": f"-{round(depresi, 4)}",
-            "Inbreeding_%": round(F * 100, 4),
-            "Tipe_Data": "Founder tambahan" if a in missing else "Data input"
+            "EBV": round(float(ebv), 4),
+            "Depresi_Inbreeding": f"-{round(float(depresi), 4)}",
+            "Inbreeding_%": round(float(F * 100), 4),
+            "Tipe_Data": "Founder tambahan" if order[i] in missing else "Data input"
         })
     
     res_df = pd.DataFrame(rows)
@@ -361,10 +373,11 @@ def read_file(uploaded_file):
 
 def dot_escape(value): return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
-def make_dot(result_df, max_nodes=150):
+def make_dot(result_df, max_nodes=50):
+    # Batasi visualisasi hanya untuk 50 node pertama agar tidak lag
     df = result_df.head(max_nodes)
     animal_set = set(df["Animal_ID"].astype(str))
-    dot = ["digraph Pedigree {", "rankdir=LR;", 'node [shape=box, style="rounded,filled", fontname="Arial"];']
+    dot = ["digraph Pedigree {", "rankdir=LR;", 'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];', "edge [arrowsize=0.6];"]
     
     for _, row in df.iterrows():
         a = dot_escape(row["Animal_ID"])
@@ -445,26 +458,80 @@ def generate_pdf(result_df, settings=None):
     elements.append(st_table)
     elements.append(Spacer(1, 20))
     
-    # Main Data Table
+            # Main Data Table
     elements.append(Paragraph("<b>Detail Individu & Klasifikasi:</b>", styles['Heading2']))
-    data = [["Animal_ID", "F (%)", "EBV", "Klasifikasi"]]
-    for _, row in result_df.iterrows():
-        data.append([
-            str(row["Animal_ID"]),
-            f"{row['Inbreeding_%']:.2f}",
-            f"{row['EBV']:.4f}",
-            str(row["Klasifikasi"])
-        ])
     
-    t = Table(data, hAlign='LEFT', colWidths=[120, 80, 80, 150])
-    t.setStyle(TableStyle([
+    # Batasi tabel di PDF hanya 1000 baris pertama untuk performa PDF
+    limit_pdf = result_df.head(1000)
+    data = [["Animal_ID", "F (%)", "EBV", "Klasifikasi"]]
+    
+    # Menyiapkan gaya baris (stabilo)
+    table_styles = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2563eb")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
-    ]))
+    ]
+
+    for i, row in enumerate(limit_pdf.iterrows(), 1):
+        _, r = row
+        klasifikasi = str(r["Klasifikasi"])
+        data.append([
+            str(r["Animal_ID"]),
+            f"{r['Inbreeding_%']:.2f}",
+            f"{r['EBV']:.4f}",
+            klasifikasi
+        ])
+        
+        # Tambahkan warna "stabilo" berdasarkan kategori
+        if "Elite Stock" in klasifikasi:
+            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.gold)) # Kuning Emas
+        elif "Bibit" in klasifikasi:
+            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightgreen)) # Hijau Muda
+        elif "Galur Murni" in klasifikasi:
+            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.orchid)) # Ungu Muda
+        elif "Final Stock" in klasifikasi:
+            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightsalmon)) # Jingga Muda (Coral)
+        elif "Komersial" in klasifikasi:
+            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightblue)) # Biru Muda
+
+    if len(result_df) > 1000:
+        data.append(["...", "...", "...", "Data lainnya dipangkas"])
+    
+    t = Table(data, repeatRows=1, colWidths=[100, 80, 80, 150])
+    t.setStyle(TableStyle(table_styles))
     elements.append(t)
+
+    # Menambahkan Visualisasi Pedigree ke PDF
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph("<b>Bagan Silsilah & Struktur Keturunan:</b>", styles['Heading2']))
+    
+    # Pendekatan Berbasis Teks (Dot Notation) agar informasi Hubungan tidak hilang 
+    # meskipun Graphviz tidak terinstal di server.
+    dot_text_style = ParagraphStyle(
+        'DotTextStyle',
+        parent=styles['Normal'],
+        fontName='Courier',
+        fontSize=8,
+        leading=10,
+        leftIndent=20
+    )
+    
+    elements.append(Paragraph("Data hubungan keturunan untuk visualisasi eksternal (Graphviz Dot Format):", styles['Italic']))
+    elements.append(Spacer(1, 10))
+    
+    # Ambil 30 baris silsilah sebagai referensi teks di PDF
+    pedigree_lines = []
+    for _, row in result_df.head(30).iterrows():
+        sire = row['Sire_ID'] if not is_unknown(row['Sire_ID']) else "Unknown"
+        dam = row['Dam_ID'] if not is_unknown(row['Dam_ID']) else "Unknown"
+        pedigree_lines.append(f"• {row['Animal_ID']} ← Sire: {sire}, Dam: {dam}")
+    
+    pedigree_text = "<br/>".join(pedigree_lines)
+    elements.append(Paragraph(pedigree_text, dot_text_style))
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph("<i>*Catatan: Gunakan antarmuka web untuk melihat diagram interaktif secara visual.</i>", styles['Italic']))
     
     doc.build(elements)
     buffer.seek(0)
@@ -575,17 +642,18 @@ def main():
         Gunakan `-` untuk data kosong.
         """)
 
-    if mode == "Contoh sapi lengkap":
-        raw_df = contoh_sapi_lengkap()
-    else:
-        uploaded = st.file_uploader("Unggah CSV atau Excel", type=["csv", "xlsx"])
-        if not uploaded:
-            st.warning("Silakan unggah file CSV atau Excel untuk memulai.")
-            st.stop()
-        raw_df = read_file(uploaded)
+        if mode == "Contoh sapi lengkap":
+            raw_df = contoh_sapi_lengkap()
+        else:
+            uploaded = st.file_uploader("Unggah CSV atau Excel", type=["csv", "xlsx"])
+            if not uploaded:
+                st.warning("Silakan unggah file CSV atau Excel untuk memulai.")
+                st.stop()
+            raw_df = read_file(uploaded)
 
-    # Layouting
-    tabs = st.tabs(["📊 Hasil & Analisis", "🖇️ Bagan Pedigree", "🔢 Matriks Hubungan (A)"])
+    # Optimization Warning for Large Data
+    if len(raw_df) > 500:
+        st.warning(f"⚠️ **Data Besar Terdeteksi ({len(raw_df)} baris):** Matriks hubungan aditif sedang dihitung menggunakan akselerasi NumPy. Mohon tunggu sebentar.")
 
     cols = list(raw_df.columns)
     
@@ -616,6 +684,9 @@ def main():
         
         res_display_data = res_df[res_df["Tipe_Data"] == "Data input"]
         
+        # Define tabs
+        tabs = st.tabs(["📊 Hasil & Analisis", "📈 Visualisasi Genetik", "🖇️ Bagan Pedigree", "🔢 Matriks Hubungan (A)"])
+
         with tabs[0]:
             st.subheader("📝 Ringkasan Data")
             
@@ -709,7 +780,8 @@ def main():
                     st.warning("Data fenotipe tidak valid untuk menghitung SD.")
 
             st.markdown("### 📋 Tabel Hasil Perhitungan")
-            st.dataframe(clean_display(res_display_data), use_container_width=True, height=400)
+            # Gunakan st.dataframe dengan height tetap untuk scrolling virtualized
+            st.dataframe(clean_display(res_display_data), use_container_width=True, height=500)
             
             # Detailed Interpretation for Selected Animal
             st.markdown("---")
@@ -810,14 +882,62 @@ def main():
                 """)
 
         with tabs[1]:
+            st.subheader("📈 Visualisasi Distribusi Genetik")
+            
+            v_col1, v_col2 = st.columns(2)
+            
+            with v_col1:
+                st.markdown("### 🧬 Distribusi Inbreeding (F)")
+                # Histogram data F
+                f_data = res_display_data["Inbreeding_%"]
+                counts, bin_edges = np.histogram(f_data, bins=10)
+                hist_df = pd.DataFrame({
+                    "Rentang F (%)": [f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}" for i in range(len(counts))],
+                    "Jumlah Sapi": counts
+                })
+                st.bar_chart(hist_df.set_index("Rentang F (%)"))
+                st.caption("Grafik ini menunjukkan sebaran tingkat inbreeding dalam populasi.")
+
+            with v_col2:
+                st.markdown("### 🐄 Potensi Genetik (EBV)")
+                # Bar chart for top 10 EBVs
+                top_ebv = res_display_data.sort_values("EBV", ascending=False).head(10)
+                st.bar_chart(top_ebv.set_index("Animal_ID")["EBV"])
+                st.caption("10 ternak dengan Nilai Pemuliaan (EBV) tertinggi.")
+
+            st.markdown("---")
+            st.markdown("### 📉 Hubungan Inbreeding vs Fenotipe")
+            # Scatter plot using Streamlit's native chart
+            # We add a small jitter if needed, but simple scatter 
+            scatter_data = res_display_data[res_display_data["Phenotype"].apply(lambda x: not is_unknown(x))].copy()
+            if not scatter_data.empty:
+                scatter_data["Phenotype_Val"] = pd.to_numeric(scatter_data["Phenotype"])
+                st.scatter_chart(
+                    scatter_data,
+                    x="Inbreeding_%",
+                    y="Phenotype_Val",
+                    color="Klasifikasi",
+                    size="EBV"
+                )
+                st.caption("Titik-titik menunjukkan hubungan antara Inbreeding (Sumbu X) dan Performa Fenotipe (Sumbu Y). Warna menunjukkan klasifikasi.")
+            else:
+                st.info("Data fenotipe tidak tersedia untuk visualisasi sebaran.")
+
+        with tabs[2]:
             st.subheader("🖇️ Visualisasi Bagan Pedigree")
+            if len(res_df) > 100:
+                st.info("💡 **Catatan:** Karena data melebihi 100 ekor, visualisasi hanya menampilkan 50 individu pertama untuk menjaga performa.")
             st.markdown("Bagan ini menunjukkan hubungan keturunan antar sapi. Warna merah menunjukkan inbreeding tinggi (>25%).")
             st.graphviz_chart(make_dot(res_df))
 
-        with tabs[2]:
-            st.subheader("🔢 Matriks Hubungan Aditif (Additive Relationship Matrix)")
-            st.markdown("Matriks ini menunjukkan nilai $A$ antar individu. Nilai diagonal adalah $1 + F$.")
-            st.dataframe(matrix_df, use_container_width=True)
+        with tabs[3]:
+            st.subheader("🔢 Matriks Hubungan Aditif")
+            if len(matrix_df) > 500:
+                st.warning("⚠️ **Peringatan Performa:** Menampilkan matriks > 500x500 di browser dapat menyebabkan keterlambatan (lag). Disarankan untuk mengunduh CSV jika data sangat besar.")
+                if st.button("Tampilkan Matriks Tetap"):
+                    st.dataframe(matrix_df, use_container_width=True)
+            else:
+                st.dataframe(matrix_df, use_container_width=True)
         
     except Exception as e:
         st.error(f"⚠️ Terjadi kesalahan dalam pengolahan data: {e}")
