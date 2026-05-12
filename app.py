@@ -673,12 +673,6 @@ def main():
             color: white !important;
         }
         </style>
-    """,oldString:
-        .stTabs [aria-selected="true"] {
-            background-color: var(--accent-primary) !important;
-            color: white !important;
-        }
-        </style>
     """, unsafe_allow_html=True)
 
     # Header Section
@@ -932,7 +926,7 @@ def main():
             
             with st.expander("Lihat Detail Konsep Pemuliaan"):
                 col_i1, col_i2 = st.columns(2)
-            with col_i1:
+                with col_i1:
                     st.markdown("""
                     **1. Heritabilitas ($h^2$):**
                     Sejauh mana variasi fenotipe disebabkan oleh genetik aditif. 
@@ -943,7 +937,7 @@ def main():
                     **2. Nilai Pemuliaan (EBV):**
                     Prediksi nilai genetik tetua yang akan diturunkan. EBV adalah dua kali nilai transmisi genetik (*Progeny Difference*).
                     """)
-            with col_i2:
+                with col_i2:
                     st.markdown("""
                     **3. Seleksi Tandem:**
                     Metode seleksi satu sifat secara bertahap dalam beberapa generasi sebelum beralih ke sifat lain. Efektif jika fokus pada satu tujuan ekonomi utama.
