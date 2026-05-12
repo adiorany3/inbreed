@@ -558,104 +558,109 @@ def main():
         initial_sidebar_state="expanded"
     )
 
-    # Custom DNA Lab Theme CSS
+    # Clean & Professional Corporate Theme CSS
     st.markdown("""
         <style>
-        /* Global Laboratory Theme */
+        /* Base Variables for Light/Dark */
+        :root {
+            --bg-main: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-sub: #475569;
+            --accent-primary: #2563eb; /* Corporate Blue */
+            --border-color: #e2e8f0;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-main: #0f172a;
+                --card-bg: #1e293b;
+                --text-main: #f8fafc;
+                --text-sub: #94a3b8;
+                --accent-primary: #3b82f6; /* Lighter Blue */
+                --border-color: #334155;
+            }
+        }
+
+        /* Global Theme */
         .main { 
-            background-color: #f0f4f8; 
-            background-image: radial-gradient(#d1dce5 1px, transparent 1px);
-            background-size: 20px 20px;
+            background-color: var(--bg-main); 
         }
         h1, h2, h3 { 
-            color: #1e293b; 
-            font-family: 'Segoe UI', Roboto, Helvetica;
+            color: var(--text-main); 
+            font-family: 'Inter', -apple-system, sans-serif;
             font-weight: 700;
         }
         
-        /* DNA Metric Styling */
+        /* Metric Styling */
         [data-testid="stMetricValue"] {
-            font-size: 2.2rem !important;
-            font-weight: 800 !important;
-            color: #0d9488 !important; /* Teal DNA shade */
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.05);
+            font-size: 2rem !important;
+            font-weight: 700 !important;
+            color: var(--accent-primary) !important;
         }
         [data-testid="stMetricLabel"] {
             font-size: 0.85rem !important;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-weight: 600;
-            color: #475569 !important;
+            letter-spacing: 0.05em;
+            color: var(--text-sub) !important;
         }
         
-        /* Laboratory Cards & UI Elements */
+        /* Cards & UI Elements */
         .status-card {
-            background: white;
+            background: var(--card-bg);
             padding: 24px;
             border-radius: 12px;
-            border-left: 5px solid #0d9488;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
             margin-bottom: 20px;
+            color: var(--text-main);
         }
         .info-card {
-            background-color: #f0fdfa;
+            background-color: var(--card-bg);
             padding: 20px;
             border-radius: 12px;
-            border-left: 6px solid #0d9488;
-            color: #0f766e;
+            border-left: 4px solid var(--accent-primary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
             line-height: 1.6;
         }
         
-        /* DNA Tabs Customization */
+        /* Tabs Customization */
         .stTabs [data-baseweb="tab-list"] {
             gap: 24px;
-            border-bottom: 2px solid #e2e8f0;
+            border-bottom: 1px solid var(--border-color);
         }
         .stTabs [data-baseweb="tab"] {
-            height: 60px;
-            font-weight: 600;
-            font-size: 1rem;
-            color: #64748b;
+            height: 50px;
+            font-weight: 500;
+            color: var(--text-sub);
         }
         .stTabs [aria-selected="true"] {
-            color: #0d9488 !important;
-            border-bottom-color: #0d9488 !important;
+            color: var(--accent-primary) !important;
+            border-bottom-color: var(--accent-primary) !important;
         }
-        
-        /* Dark Mode Compatibility Filter */
-        @media (prefers-color-scheme: dark) {
-            .main { background-color: #0f172a; }
-            .status-card { background: #1e293b; color: white; }
-            h1, h2, h3 { color: #f1f5f9; }
-        }
-        @media (prefers-color-scheme: dark) {
-            .main { background-color: #0f172a; }
-            h1, h2, h3 { color: #f8fafc; }
-            .status-card { background: #1e293b; border-color: #334155; }
-            .info-card { background-color: #0c4a6e; color: #e0f2fe; border-left-color: #38bdf8; }
-            [data-testid="stMetricValue"] { color: #3b82f6 !important; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: var(--text-sub);
+            padding: 30px 0;
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border-color);
+            margin-top: 40px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Header Section with DNA Lab Logo
-    st.markdown("""
-        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
-            <div style="font-size: 50px;">🧬</div>
-            <div>
-                <h1 style="margin: 0; padding: 0; line-height: 1;">DNA Breeding Lab</h1>
-                <p style="margin: 0; color: #64748b; font-size: 1.1rem;">Advanced Inbreeding & Genetic Selection Analytics</p>
-            </div>
+    # Header Section
+    st.markdown(f"""
+        <div style="margin-bottom: 2rem;">
+            <h1 style="margin-bottom: 0.5rem;">📈 Breeding Decision Support System</h1>
+            <p style="color: var(--text-sub); font-size: 1.1rem;">Sistem Analisis Inbreeding & Manajemen Strategi Pemuliaan Ternak</p>
         </div>
     """, unsafe_allow_html=True)
 
     with st.sidebar:
-        st.markdown("""
-            <div style="background-color: #0d9488; padding: 15px; border-radius: 10px; color: white; margin-bottom: 20px;">
-                <h4 style="margin:0;">🧪 Control Panel</h4>
-                <p style="font-size: 0.8rem; margin:0; opacity: 0.8;">Laboratory Mode Active</p>
-            </div>
-        """, unsafe_allow_html=True)
         st.header("⚙️ Konfigurasi")
         mode = st.radio(
             "Pilih Sumber Data",
@@ -974,10 +979,10 @@ def main():
         st.error(f"⚠️ Terjadi kesalahan dalam pengolahan data: {e}")
         st.exception(e)
 
-    # Footer DNA Signature
+    # Footer
     st.markdown("""
         <div class="footer">
-            🧬 DNA Breeding Lab | Analytics Protocol v2.5 | Created by Galuh Adi Insani
+            Analytics System v2.5 | Created by Galuh Adi Insani
         </div>
     """, unsafe_allow_html=True)
 
