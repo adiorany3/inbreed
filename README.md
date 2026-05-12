@@ -1,14 +1,6 @@
-# Kalkulator Inbreeding Sapi - Streamlit
+# Software Inbreeding Sapi - Fix Total
 
-Aplikasi ini menghitung koefisien inbreeding sapi dari data pedigree.
-
-## Perbaikan versi ini
-
-- Tampilan tidak lagi menampilkan `NaN`.
-- Parent tidak diketahui ditampilkan sebagai `-`.
-- Pembacaan CSV/Excel memakai `keep_default_na=False`, sehingga sel kosong tidak otomatis berubah menjadi NaN.
-- Contoh data sapi sudah memiliki nilai inbreeding yang jelas.
-- Hasil ditampilkan sebagai tabel, proses perhitungan, grafik, dan bagan pedigree.
+Versi ini memperbaiki masalah hasil yang masih tampil kosong/NaN dan menambahkan perhitungan kondisi inbreeding.
 
 ## Cara menjalankan
 
@@ -17,15 +9,37 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Contoh data
+## Fitur
+
+- Perhitungan otomatis setelah data masuk
+- Tidak menampilkan nilai kosong sebagai NaN
+- Parent tidak diketahui ditampilkan sebagai tanda `-`
+- Kolom hasil:
+  - Hubungan_Parent_A
+  - Koefisien_Inbreeding_F
+  - Inbreeding_%
+  - Kondisi_Inbreeding
+  - Rekomendasi
+  - Proses_Perhitungan
+- Grafik nilai inbreeding
+- Bagan pedigree
+- Contoh dari gambar langsung tersedia di aplikasi
+
+## Contoh dari gambar
 
 ```csv
 Animal_ID,Sire_ID,Dam_ID
-SAPI_JANTAN_01,-,-
-SAPI_BETINA_01,-,-
-SAPI_A1,SAPI_JANTAN_01,SAPI_BETINA_01
-SAPI_A2,SAPI_JANTAN_01,SAPI_BETINA_01
-SAPI_B1,SAPI_A1,SAPI_A2
+I,-,-
+P,-,-
+C,I,P
+D,I,P
+X,I,P
+B,D,C
+A,B,C
+E,B,-
+F,D,-
 ```
 
-SAPI_B1 adalah hasil perkawinan saudara kandung penuh, sehingga F = 25%.
+Hasil utama:
+- B = D x C -> F = 25%
+- A = B x C -> F = 37,5%

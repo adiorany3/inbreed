@@ -1,0 +1,10 @@
+﻿Animal_ID,Sire_ID,Dam_ID
+I,-,-
+P,-,-
+C,I,P
+D,I,P
+X,I,P
+B,D,C
+A,B,C
+E,B,-
+F,D,-
