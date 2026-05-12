@@ -13,7 +13,7 @@ Aplikasi berbasis web untuk menghitung koefisien inbreeding ($F$) dan koefisien 
 
 1. **Clone repositori**:
    ```bash
-   git clone https://github.com/galuhadi/inbreed.git
+   git clone https://github.com/adiorany3/inbreed.git
    cd inbreed
    ```
 
