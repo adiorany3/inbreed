@@ -1,6 +1,6 @@
-# Software Inbreeding Sapi - Fix Total
+# Kalkulator Inbreeding Sapi - Final Fix
 
-Versi ini memperbaiki masalah hasil yang masih tampil kosong/NaN dan menambahkan perhitungan kondisi inbreeding.
+Versi ini dibuat untuk memperbaiki kegagalan perhitungan dan masalah nilai kosong/NaN pada hasil.
 
 ## Cara menjalankan
 
@@ -9,23 +9,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Fitur
-
-- Perhitungan otomatis setelah data masuk
-- Tidak menampilkan nilai kosong sebagai NaN
-- Parent tidak diketahui ditampilkan sebagai tanda `-`
-- Kolom hasil:
-  - Hubungan_Parent_A
-  - Koefisien_Inbreeding_F
-  - Inbreeding_%
-  - Kondisi_Inbreeding
-  - Rekomendasi
-  - Proses_Perhitungan
-- Grafik nilai inbreeding
-- Bagan pedigree
-- Contoh dari gambar langsung tersedia di aplikasi
-
-## Contoh dari gambar
+## Format data
 
 ```csv
 Animal_ID,Sire_ID,Dam_ID
@@ -40,6 +24,11 @@ E,B,-
 F,D,-
 ```
 
-Hasil utama:
+## Hasil contoh dari gambar
+
 - B = D x C -> F = 25%
 - A = B x C -> F = 37,5%
+
+## Catatan
+
+Gunakan tanda `-` untuk parent yang tidak diketahui.
