@@ -4,6 +4,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import streamlit as st
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 
 # ============================================================
@@ -213,6 +217,71 @@ def dots_to_pedigree(result_df):
     return "\n".join(lines)
 
 
+def generate_pdf(result_df):
+    """Membuat laporan PDF profesional menggunakan ReportLab."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    
+    # Custom Styles
+    title_style = styles['Heading1']
+    title_style.alignment = 1  # Center
+    
+    elements = []
+    
+    # Judul
+    elements.append(Paragraph("LAPORAN ANALISIS INBREEDING TERNAK", title_style))
+    elements.append(Spacer(1, 12))
+    
+    # Ringkasan Ringkas
+    avg_f = result_df["Inbreeding_%"].mean()
+    max_f = result_df["Inbreeding_%"].max()
+    summary_text = f"Total Ternak: {len(result_df)} | Rata-rata Inbreeding: {avg_f:.2f}% | Inbreeding Maksimum: {max_f:.2f}%"
+    elements.append(Paragraph(summary_text, styles['Normal']))
+    elements.append(Spacer(1, 20))
+    
+    # Tabel Data
+    data = [["Animal_ID", "Sire", "Dam", "F (%)", "Indikasi"]]
+    for _, row in result_df.iterrows():
+        data.append([
+            str(row["Animal_ID"]),
+            str(row["Sire_ID"]),
+            str(row["Dam_ID"]),
+            f"{row['Inbreeding_%']:.2f}",
+            str(row["Kondisi_Inbreeding"])
+        ])
+    
+    t = Table(data, hAlign='LEFT')
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.dodgerblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+        ('GRID', (0, 0), (-1, -1), 1, colors.grey)
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 25))
+    
+    # Bagian Pencegahan & Insight
+    elements.append(Paragraph("STRATEGI PENCEGAHAN & MANAJEMEN", styles['Heading2']))
+    elements.append(Spacer(1, 10))
+    
+    insight_text = """
+    <b>1. Pertukaran Pejantan (Sire Rotation):</b> Hindari penggunaan pejantan yang sama selama lebih dari dua generasi pada kelompok induk yang sama. Tukar pejantan dengan peternak lain atau gunakan semen beku dari garis keturunan berbeda.<br/><br/>
+    <b>2. Pencatatan Pedigree yang Ketat:</b> Inbreeding hanya bisa dicegah jika silsilah ternak tercatat dengan baik. Pastikan setiap kelahiran dicatat induk dan bapaknya.<br/><br/>
+    <b>3. Batas Toleransi:</b> Usahakan koefisien inbreeding tetap di bawah 6.25%. Jika sudah mencapai 12.5%, segera lakukan 'outcrossing' (perkawinan dengan individu yang tidak berkerabat sama sekali).<br/><br/>
+    <b>4. Seleksi Berbasis Nilai Pemuliaan:</b> Jangan hanya memilih ternak berdasarkan fisik, tapi juga perhatikan hubungan kekerabatannya untuk mencegah depresi inbreeding.
+    """
+    elements.append(Paragraph(insight_text, styles['Normal']))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 def main():
     st.set_page_config(
         page_title="Kalkulator Inbreeding Ternak",
@@ -343,13 +412,40 @@ def main():
             
             # Download options
             st.markdown("### 📥 Unduh Hasil")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             csv = clean_display(res_df).to_csv(index=False).encode('utf-8')
-            c1.download_button("Download CSV", csv, "hasil_inbreeding.csv", "text/csv")
+            c1.download_button("📂 CSV", csv, "hasil_inbreeding.csv", "text/csv", use_container_width=True)
             
-            # Simple Text Report for now
+            # PDF Report
+            pdf_data = generate_pdf(res_display_data)
+            c2.download_button("📄 Laporan PDF", pdf_data, "Laporan_Inbreeding.pdf", "application/pdf", use_container_width=True)
+            
+            # Simple Text Report
             txt_report = dots_to_pedigree(res_display_data)
-            c2.download_button("Download Laporan Ringkas (TXT)", txt_report.encode('utf-8'), "laporan_inbreeding.txt", "text/plain")
+            c3.download_button("📝 Ringkasan TXT", txt_report.encode('utf-8'), "laporan_inbreeding.txt", "text/plain", use_container_width=True)
+
+            # Extra Insights Section
+            st.markdown("---")
+            st.markdown("### 💡 Wawasan & Strategi Manajemen")
+            
+            col_in1, col_in2 = st.columns(2)
+            
+            with col_in1:
+                st.info("""
+                **🧬 Mengapa Inbreeding Berbahaya?**
+                Inbreeding meningkatkan peluang munculnya gen resesif yang merugikan. Hal ini menyebabkan:
+                - **Penurunan Vitalitas:** Ternak lebih mudah sakit.
+                - **Masalah Reproduksi:** Jarak beranak (calving interval) lebih lama.
+                - **Penurunan Pertumbuhan:** Berat sapih dan berat dewasa lebih rendah.
+                """)
+                
+            with col_in2:
+                st.success("""
+                **🛡️ Strategi Pencegahan**
+                1. **Rotasi Pejantan:** Ganti pejantan setiap 2 tahun atau setelah anak betina pertamanya masuk usia kawin.
+                2. **Outcrossing:** Kawinkan ternak dengan individu dari kelompok/populasi lain yang tidak berhubungan.
+                3. **Digital Recording:** Gunakan sistem ini secara rutin untuk simulasi sebelum mengawinkan ternak.
+                """)
 
         with tabs[1]:
             st.subheader("🖇️ Visualisasi Bagan Pedigree")
