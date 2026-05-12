@@ -7,625 +7,370 @@ import streamlit as st
 
 
 # ============================================================
-# FINAL FIX - KALKULATOR INBREEDING SAPI
+# FINAL FIX - KALKULATOR INBREEDING TERNAK
 # ============================================================
-# Input:
-#   Animal_ID, Sire_ID, Dam_ID
-#
-# Output:
-#   Hubungan parent A(sire, dam)
-#   Koefisien inbreeding F
-#   Persentase inbreeding
-#   Kondisi inbreeding
-#
-# Rumus:
-#   F_anak = 0.5 x A(sire, dam)
-#
-# Catatan:
-#   Seluruh output display memakai "-" untuk nilai kosong,
-#   sehingga tidak ada NaN pada tabel hasil.
-# ============================================================
-
 
 EMPTY = "-"
 UNKNOWN_VALUES = {
-    "",
-    " ",
-    "-",
-    "--",
-    "0",
-    "na",
-    "n/a",
-    "nan",
-    "none",
-    "null",
-    "unknown",
-    "tidak diketahui",
-    "tidak ada",
-    "kosong",
+    "", " ", "-", "--", "0", "na", "n/a", "nan", "none", "null",
+    "unknown", "tidak diketahui", "tidak ada", "kosong",
 }
 
 
 def is_unknown(value) -> bool:
-    """Menganggap blank, '-', 0, NA, None, NaN sebagai parent tidak diketahui."""
-    if value is None:
-        return True
-
+    if value is None: return True
     try:
-        if pd.isna(value):
-            return True
-    except Exception:
-        pass
-
+        if pd.isna(value): return True
+    except: pass
     text = str(value).strip()
     return text.lower() in UNKNOWN_VALUES
 
 
 def clean_id(value) -> Optional[str]:
-    """ID internal untuk perhitungan. Kosong menjadi None."""
-    if is_unknown(value):
-        return None
-
+    if is_unknown(value): return None
     text = str(value).strip()
-
-    # Antisipasi Excel membaca ID angka sebagai 1.0
+    # Handle numeric IDs ending in .0 from Excel
     if text.endswith(".0"):
         try:
             num = float(text)
-            if num.is_integer():
-                text = str(int(num))
-        except Exception:
-            pass
-
+            if num.is_integer(): text = str(int(num))
+        except: pass
     return text
 
 
 def show_value(value) -> str:
-    """Nilai display. Kosong menjadi '-'."""
-    if is_unknown(value):
-        return EMPTY
+    if is_unknown(value): return EMPTY
     return str(value).strip()
 
 
 def clean_display(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Membersihkan seluruh tabel untuk tampilan dan download.
-    Object/string kosong menjadi '-'.
-    Numeric kosong menjadi 0.
-    """
     out = df.copy()
-
     for col in out.columns:
         if pd.api.types.is_numeric_dtype(out[col]):
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
         else:
-            out[col] = out[col].apply(show_value).astype(str)
-
+            out[col] = out[col].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x)
     return out
 
 
 def kondisi_inbreeding(percent: float) -> str:
-    if percent <= 0:
-        return "Tidak inbred"
-    if percent < 6.25:
-        return "Inbreeding rendah"
-    if percent < 12.5:
-        return "Inbreeding sedang"
-    if percent < 25:
-        return "Inbreeding tinggi"
+    if percent <= 0: return "Tidak inbred"
+    if percent < 6.25: return "Inbreeding rendah"
+    if percent < 12.5: return "Inbreeding sedang"
+    if percent < 25: return "Inbreeding tinggi"
     return "Inbreeding sangat tinggi"
 
 
 def rekomendasi(percent: float) -> str:
-    if percent <= 0:
-        return "Aman berdasarkan pedigree: tidak terdeteksi inbreeding."
-    if percent < 6.25:
-        return "Masih rendah, tetapi tetap perlu monitoring."
-    if percent < 12.5:
-        return "Perlu perhatian. Hindari pengulangan perkawinan kerabat."
-    if percent < 25:
-        return "Risiko tinggi. Gunakan pasangan dari garis keturunan berbeda."
+    if percent <= 0: return "Aman berdasarkan pedigree: tidak terdeteksi inbreeding."
+    if percent < 6.25: return "Masih rendah, tetapi tetap perlu monitoring."
+    if percent < 12.5: return "Perlu perhatian. Hindari pengulangan perkawinan kerabat."
+    if percent < 25: return "Risiko tinggi. Gunakan pasangan dari garis keturunan berbeda."
     return "Risiko sangat tinggi. Perkawinan kerabat dekat sebaiknya dihindari."
 
 
-def contoh_dari_gambar() -> pd.DataFrame:
-    """
-    Interpretasi gambar:
-    - I dan P adalah founder.
-    - C, D, X berasal dari I x P.
-    - B berasal dari D x C.
-    - A berasal dari B x C.
-    - E berasal dari B x parent tidak diketahui.
-    - F berasal dari D x parent tidak diketahui.
-    """
-    return pd.DataFrame(
-        {
-            "Animal_ID": ["I", "P", "C", "D", "X", "B", "A", "E", "F"],
-            "Sire_ID": ["-", "-", "I", "I", "I", "D", "B", "B", "D"],
-            "Dam_ID": ["-", "-", "P", "P", "P", "C", "C", "-", "-"],
-        }
-    )
+def dampak_inbreeding(percent: float) -> str:
+    """Memberikan informasi tambahan mengenai dampak biologis berdasarkan persentase F."""
+    if percent <= 0:
+        return "🧬 **Dampak:** Variabilitas genetik terjaga maksimal. Tidak ada risiko depresi inbreeding terdeteksi."
+    elif percent < 6.25:
+        return "🌱 **Dampak:** Pengaruh minimal pada performa. Efek kumulatif mulai muncul jika terjadi terus-menerus dalam beberapa generasi."
+    elif percent < 12.5:
+        return "⚠️ **Dampak:** Potensi penurunan performa produksi (pertumbuhan, produksi susu) sekitar 2-5%. Sedikit peningkatan risiko penyakit genetik resesif."
+    elif percent < 25:
+        return "❗ **Dampak:** Depresi inbreeding mulai terlihat nyata. Penurunan fertilitas, daya tahan tubuh melemah, dan potensi munculnya cacat lahir (lethal traits)."
+    else:
+        return "🚨 **Dampak Kritis:** Risiko tinggi kematian embrionik, infertilitas permanen, dan penurunan vitalitas yang drastis. Populasi dalam bahaya penurunan kualitas genetik permanen."
 
 
 def contoh_sapi_lengkap() -> pd.DataFrame:
-    return pd.DataFrame(
-        {
-            "Animal_ID": [
-                "PEJANTAN_01",
-                "INDUK_01",
-                "SAPI_C",
-                "SAPI_D",
-                "SAPI_X",
-                "SAPI_B",
-                "SAPI_A",
-                "SAPI_E",
-                "SAPI_F",
-            ],
-            "Sire_ID": [
-                "-",
-                "-",
-                "PEJANTAN_01",
-                "PEJANTAN_01",
-                "PEJANTAN_01",
-                "SAPI_D",
-                "SAPI_B",
-                "SAPI_B",
-                "SAPI_D",
-            ],
-            "Dam_ID": [
-                "-",
-                "-",
-                "INDUK_01",
-                "INDUK_01",
-                "INDUK_01",
-                "SAPI_C",
-                "SAPI_C",
-                "-",
-                "-",
-            ],
-        }
-    )
+    return pd.DataFrame({
+        "Animal_ID": ["PEJANTAN_01", "INDUK_01", "SAPI_C", "SAPI_D", "SAPI_X", "SAPI_B", "SAPI_A", "SAPI_E", "SAPI_F"],
+        "Sire_ID": ["-", "-", "PEJANTAN_01", "PEJANTAN_01", "PEJANTAN_01", "SAPI_D", "SAPI_B", "SAPI_B", "SAPI_D"],
+        "Dam_ID": ["-", "-", "INDUK_01", "INDUK_01", "INDUK_01", "SAPI_C", "SAPI_C", "-", "-"],
+    })
 
 
-def standardize_input(raw_df: pd.DataFrame, id_col: str, sire_col: str, dam_col: str) -> pd.DataFrame:
-    """Membuat dataframe internal yang aman untuk perhitungan."""
-    if len({id_col, sire_col, dam_col}) != 3:
-        raise ValueError("Kolom Animal_ID, Sire_ID, dan Dam_ID harus berbeda.")
-
+def standardize_input(raw_df, id_col, sire_col, dam_col):
     df = raw_df[[id_col, sire_col, dam_col]].copy()
     df.columns = ["Animal_ID", "Sire_ID", "Dam_ID"]
-
     for col in ["Animal_ID", "Sire_ID", "Dam_ID"]:
         df[col] = df[col].apply(clean_id)
-
     df = df.dropna(subset=["Animal_ID"]).copy()
-
-    if df.empty:
-        raise ValueError("Tidak ada Animal_ID yang valid.")
-
-    duplicates = df.loc[df["Animal_ID"].duplicated(), "Animal_ID"].tolist()
-    if duplicates:
-        raise ValueError(f"Ada Animal_ID duplikat: {duplicates[:10]}")
-
-    # Cek self-parent. Ini pasti membuat pedigree tidak valid.
-    self_parent = df[
-        ((df["Sire_ID"].notna()) & (df["Animal_ID"] == df["Sire_ID"]))
-        | ((df["Dam_ID"].notna()) & (df["Animal_ID"] == df["Dam_ID"]))
-    ]
-    if not self_parent.empty:
-        ids = self_parent["Animal_ID"].tolist()
-        raise ValueError(f"Ada sapi yang menjadi parent untuk dirinya sendiri: {ids[:10]}")
-
+    if df.empty: raise ValueError("Tidak ada Animal_ID yang valid.")
     return df.reset_index(drop=True)
 
 
-def add_founders(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
-    """Parent yang tidak punya baris sendiri ditambahkan sebagai founder."""
-    animal_ids = set(df["Animal_ID"].dropna())
-    parent_ids = set(df["Sire_ID"].dropna()).union(set(df["Dam_ID"].dropna()))
+def calculate(df_input):
+    # 1. Identify missing founders
+    animal_ids = set(df_input["Animal_ID"])
+    parent_ids = set(df_input["Sire_ID"].dropna()).union(set(df_input["Dam_ID"].dropna()))
     missing = sorted(parent_ids - animal_ids)
-
-    if not missing:
-        return df.copy(), []
-
-    founder_df = pd.DataFrame(
-        {
-            "Animal_ID": missing,
-            "Sire_ID": [None] * len(missing),
-            "Dam_ID": [None] * len(missing),
-        }
-    )
-
-    return pd.concat([founder_df, df], ignore_index=True), missing
-
-
-def sort_parent_before_child(df: pd.DataFrame) -> List[str]:
-    """Topological sort agar parent selalu dihitung sebelum anak."""
-    parents: Dict[str, Tuple[Optional[str], Optional[str]]] = {
-        row.Animal_ID: (row.Sire_ID, row.Dam_ID)
-        for row in df.itertuples(index=False)
-    }
-
-    order: List[str] = []
-    state: Dict[str, int] = {}
-
-    def visit(animal_id: str, path: List[str]):
-        status = state.get(animal_id, 0)
-
-        if status == 1:
-            path_text = " -> ".join(path + [animal_id])
-            raise ValueError(f"Terdeteksi siklus pedigree: {path_text}")
-
-        if status == 2:
-            return
-
-        state[animal_id] = 1
-        sire, dam = parents[animal_id]
-
-        for parent_id in [sire, dam]:
-            if parent_id is not None:
-                if parent_id not in parents:
-                    parents[parent_id] = (None, None)
-                visit(parent_id, path + [animal_id])
-
-        state[animal_id] = 2
-        order.append(animal_id)
-
-    for animal_id in list(parents.keys()):
-        visit(animal_id, [])
-
-    return order
-
-
-def calculate(df_input: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """
-    Menghitung inbreeding.
-    Return:
-      standardized_df, result_df, matrix_df
-    """
-    df, missing_founders = add_founders(df_input)
-    order = sort_parent_before_child(df)
-
-    parent_map = {
-        row.Animal_ID: (row.Sire_ID, row.Dam_ID)
-        for row in df.itertuples(index=False)
-    }
-
+    
+    # 2. Complete the pedigree
+    founder_df = pd.DataFrame({"Animal_ID": missing, "Sire_ID": [None]*len(missing), "Dam_ID": [None]*len(missing)})
+    df_full = pd.concat([founder_df, df_input], ignore_index=True)
+    
+    # 3. Build lookup map
+    # CRITICAL: Convert all IDs to string and handle None/NaN consistently
+    parents_map = {}
+    for row in df_full.itertuples(index=False):
+        if row.Animal_ID:
+            s_val = None if (row.Sire_ID is None or (isinstance(row.Sire_ID, float) and np.isnan(row.Sire_ID))) else str(row.Sire_ID)
+            d_val = None if (row.Dam_ID is None or (isinstance(row.Dam_ID, float) and np.isnan(row.Dam_ID))) else str(row.Dam_ID)
+            parents_map[str(row.Animal_ID)] = (s_val, d_val)
+            
+    # 4. Topological Sort
+    order = []
+    state = {}
+    def visit(a):
+        if a is None: return
+        status = state.get(a, 0)
+        if status == 1: raise ValueError(f"Siklus terdeteksi pada {a}")
+        if status == 2: return
+        state[a] = 1
+        s, d = parents_map.get(a, (None, None))
+        for p in [s, d]:
+            if p is not None: visit(p)
+        state[a] = 2
+        order.append(a)
+    for a in list(parents_map.keys()): visit(a)
+    
+    # 5. Relationship Matrix (A) Perhitungan
     n = len(order)
-    if n > 5000:
-        raise ValueError("Data terlalu besar untuk matriks penuh. Gunakan data lebih kecil.")
-
-    idx = {animal_id: i for i, animal_id in enumerate(order)}
-    A = np.zeros((n, n), dtype=float)
+    idx_map = {a: i for i, a in enumerate(order)}
+    A = np.zeros((n, n))
     rows = []
-
-    for i, animal_id in enumerate(order):
-        sire, dam = parent_map[animal_id]
-        sire_idx = idx.get(sire) if sire is not None else None
-        dam_idx = idx.get(dam) if dam is not None else None
-
-        # A[i,j] = 0.5(A[sire,j] + A[dam,j])
+    
+    for i, a in enumerate(order):
+        s, d = parents_map.get(a, (None, None))
+        si = idx_map.get(s) if s is not None else None
+        di = idx_map.get(d) if d is not None else None
+        
+        # OFF-DIAGONAL: A[i,j] = 0.5(A[si,j] + A[di,j])
         for j in range(i):
             val = 0.0
-            if sire_idx is not None:
-                val += 0.5 * A[sire_idx, j]
-            if dam_idx is not None:
-                val += 0.5 * A[dam_idx, j]
-
-            A[i, j] = val
-            A[j, i] = val
-
-        # F_i = 0.5 x A[sire,dam]
-        if sire_idx is not None and dam_idx is not None:
-            parent_relation = float(A[sire_idx, dam_idx])
-            F = 0.5 * parent_relation
-        else:
-            parent_relation = 0.0
-            F = 0.0
-
+            if si is not None: val += 0.5 * A[si, j]
+            if di is not None: val += 0.5 * A[di, j]
+            A[i, j] = A[j, i] = val
+            
+        # DIAGONAL: A[i,i] = 1 + F_i where F_i = 0.5 * A[si, di]
+        F = 0.0
+        if si is not None and di is not None:
+            F = 0.5 * A[si, di]
+            
         A[i, i] = 1.0 + F
-        percent = F * 100
-
-        if sire is None and dam is None:
-            proses = "Founder / parent tidak diketahui: F = 0%."
-        elif sire is None or dam is None:
-            proses = "Salah satu parent tidak diketahui: F = 0%."
-        else:
-            proses = (
-                f"F {animal_id} = 0,5 × A({sire},{dam}) = "
-                f"0,5 × {parent_relation:.6f} = {F:.6f} = {percent:.2f}%."
-            )
-
-        same_parent_note = ""
-        if sire is not None and dam is not None and sire == dam:
-            same_parent_note = "Sire dan dam sama, cek ulang data."
-
-        rows.append(
-            {
-                "Animal_ID": animal_id,
-                "Sire_ID": show_value(sire),
-                "Dam_ID": show_value(dam),
-                "Hubungan_Parent_A": round(parent_relation, 6),
-                "Koefisien_Inbreeding_F": round(F, 6),
-                "Inbreeding_%": round(percent, 4),
-                "Kondisi_Inbreeding": kondisi_inbreeding(percent),
-                "Rekomendasi": rekomendasi(percent),
-                "Proses_Perhitungan": proses,
-                "Tipe_Data": "Founder tambahan" if animal_id in missing_founders else "Data input",
-                "Catatan": same_parent_note,
-            }
-        )
-
-    result = pd.DataFrame(rows)
-    matrix = pd.DataFrame(A, index=order, columns=order)
-
-    standardized_display = clean_display(df_input)
-
-    # Garansi final: tidak ada NaN di result display
-    result = clean_display(result)
-
-    return standardized_display, result, matrix
+        
+        rows.append({
+            "Animal_ID": a,
+            "Sire_ID": s,
+            "Dam_ID": d,
+            "Inbreeding_%": round(F * 100, 4),
+            "Kondisi_Inbreeding": kondisi_inbreeding(F * 100),
+            "Dampak_Biologis": dampak_inbreeding(F * 100),
+            "Rekomendasi": rekomendasi(F * 100),
+            "Tipe_Data": "Founder tambahan" if a in missing else "Data input"
+        })
+    
+    res_df = pd.DataFrame(rows)
+    return clean_display(df_input), res_df, pd.DataFrame(A, index=order, columns=order)
 
 
-def read_file(uploaded_file) -> pd.DataFrame:
-    """Baca CSV/Excel tanpa mengubah blank menjadi NaN."""
+def read_file(uploaded_file):
     if uploaded_file.name.lower().endswith(".csv"):
         return pd.read_csv(uploaded_file, dtype=str, keep_default_na=False)
     return pd.read_excel(uploaded_file, dtype=str, keep_default_na=False)
 
 
-def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    return clean_display(df).to_csv(index=False, na_rep=EMPTY).encode("utf-8-sig")
+def dot_escape(value): return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
-
-def to_excel_bytes(result: pd.DataFrame, matrix: Optional[pd.DataFrame] = None) -> bytes:
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        clean_display(result).to_excel(writer, index=False, sheet_name="Hasil_Inbreeding")
-        if matrix is not None:
-            matrix.to_excel(writer, sheet_name="Matriks_A")
-    buffer.seek(0)
-    return buffer.getvalue()
-
-
-def dot_escape(value) -> str:
-    return str(value).replace("\\", "\\\\").replace('"', '\\"')
-
-
-def make_dot(result_df: pd.DataFrame, max_nodes: int = 150) -> str:
-    df = clean_display(result_df).head(max_nodes)
+def make_dot(result_df, max_nodes=150):
+    df = result_df.head(max_nodes)
     animal_set = set(df["Animal_ID"].astype(str))
-
-    dot = [
-        "digraph Pedigree {",
-        "rankdir=LR;",
-        'graph [bgcolor="transparent", splines=true, overlap=false];',
-        'node [shape=box, style="rounded,filled", color="#333333", fontname="Arial"];',
-        'edge [color="#555555", fontname="Arial", fontsize=9];',
-    ]
-
+    dot = ["digraph Pedigree {", "rankdir=LR;", 'node [shape=box, style="rounded,filled", fontname="Arial"];']
     for _, row in df.iterrows():
-        animal = dot_escape(row["Animal_ID"])
-        f_pct = float(row["Inbreeding_%"])
-        kondisi = dot_escape(row["Kondisi_Inbreeding"])
-
-        if f_pct >= 25:
-            fill = "#FFE4E1"
-        elif f_pct > 0:
-            fill = "#FFF4CC"
-        else:
-            fill = "#FFFFFF"
-
-        label = f"{animal}\\nF={f_pct:.2f}%\\n{kondisi}"
-        dot.append(f'"{animal}" [label="{label}", fillcolor="{fill}"];')
-
+        a = dot_escape(row["Animal_ID"])
+        f = float(row["Inbreeding_%"])
+        fill = "#FFE4E1" if f >= 25 else ("#FFF4CC" if f > 0 else "#FFFFFF")
+        dot.append(f'"{a}" [label="{a}\\nF={f:.2f}%", fillcolor="{fill}"];')
     for _, row in df.iterrows():
-        animal = dot_escape(row["Animal_ID"])
-        sire = row["Sire_ID"]
-        dam = row["Dam_ID"]
-
-        if sire in animal_set:
-            dot.append(f'"{dot_escape(sire)}" -> "{animal}" [label="sire"];')
-        if dam in animal_set:
-            dot.append(f'"{dot_escape(dam)}" -> "{animal}" [label="dam"];')
-
+        a, s, d = dot_escape(row["Animal_ID"]), row["Sire_ID"], row["Dam_ID"]
+        if s and str(s) in animal_set: dot.append(f'"{dot_escape(s)}" -> "{a}" [label="sire"];')
+        if d and str(d) in animal_set: dot.append(f'"{dot_escape(d)}" -> "{a}" [label="dam"];')
     dot.append("}")
     return "\n".join(dot)
 
 
-def explanation_image_example():
-    st.markdown(
-        """
-        ### Contoh perhitungan dari gambar
+def dots_to_pedigree(result_df):
+    """Fallback simple text for PDF if no library exists."""
+    lines = ["LAPORAN INBREEDING SAPI", "="*30, ""]
+    for _, row in result_df.iterrows():
+        lines.append(f"Animal: {row['Animal_ID']}")
+        lines.append(f"Ref: F={row['Inbreeding_%']}% ({row['Kondisi_Inbreeding']})")
+        lines.append(f"Dampak: {row['Dampak_Biologis']}")
+        lines.append(f"Rekomendasi: {row['Rekomendasi']}")
+        lines.append("-" * 20)
+    return "\n".join(lines)
 
-        Data gambar dibaca sebagai:
 
-        ```text
-        I dan P = founder
-        C = I × P
-        D = I × P
-        X = I × P
-        B = D × C
-        A = B × C
-        E = B × unknown
-        F = D × unknown
-        ```
-
-        Karena **C** dan **D** sama-sama anak dari **I × P**, maka **C dan D adalah saudara kandung penuh**.
-
-        **B = D × C**
-
-        Jadi:
-
-        ```text
-        A(D,C) = 0,50
-        F_B = 0,5 × A(D,C)
-        F_B = 0,5 × 0,50
-        F_B = 0,25 = 25%
-        ```
-
-        Untuk **A**:
-
-        ```text
-        A = B × C
-        A(B,C) = 0,75
-        F_A = 0,5 × 0,75
-        F_A = 0,375 = 37,5%
-        ```
-        """
+def main():
+    st.set_page_config(
+        page_title="Kalkulator Inbreeding Ternak",
+        page_icon="🐄",
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
 
+    # Custom CSS for better UI
+    st.markdown("""
+        <style>
+        [data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+            font-weight: 700 !important;
+            color: #1e3a8a !important; /* Biru gelap untuk kontras tinggi */
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 1rem !important;
+            font-weight: 600 !important;
+            color: #374151 !important; /* Abu-abu gelap */
+        }
+        /* Penyesuaian khusus untuk Mode Gelap agar tetap terbaca */
+        @media (prefers-color-scheme: dark) {
+            [data-testid="stMetricValue"] {
+                color: #60a5fa !important; /* Biru terang untuk mode gelap */
+            }
+            [data-testid="stMetricLabel"] {
+                color: #e5e7eb !important; /* Abu-abu sangat terang */
+            }
+        }
+        .stMetric {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        h1, h2, h3 {
+            color: #1e3a8a;
+        }
+        @media (prefers-color-scheme: dark) {
+            h1, h2, h3 {
+                color: #60a5fa;
+            }
+        }
+        /* Footer style */
+        .footer {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100%;
+            background-color: transparent;
+            color: #6b7280;
+            text-align: center;
+            padding: 10px;
+            font-size: 0.8rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-# ============================================================
-# STREAMLIT UI
-# ============================================================
+    st.title("🐄 Kalkulator Inbreeding Ternak")
+    st.markdown("---")
 
-st.set_page_config(
-    page_title="Kalkulator Inbreeding Sapi",
-    page_icon="🐄",
-    layout="wide",
-)
+    with st.sidebar:
+        st.header("⚙️ Konfigurasi")
+        mode = st.radio(
+            "Pilih Sumber Data",
+            ["Contoh sapi lengkap", "Unggah file sendiri"],
+            help="Gunakan contoh data untuk mempelajari cara kerja atau unggah file Anda sendiri."
+        )
+        
+        st.info("""
+        **Format Data:**
+        Pastikan file memiliki kolom:
+        - `Animal_ID` (ID Sapi)
+        - `Sire_ID` (ID Pejantan)
+        - `Dam_ID` (ID Induk)
+        
+        Gunakan `-` untuk data kosong.
+        """)
 
-st.title("🐄 Kalkulator Inbreeding Sapi - Final Fix")
-st.caption("Menghitung koefisien inbreeding, kondisi inbreeding, grafik, dan bagan pedigree.")
+    if mode == "Contoh sapi lengkap":
+        raw_df = contoh_sapi_lengkap()
+    else:
+        uploaded = st.file_uploader("Unggah CSV atau Excel", type=["csv", "xlsx"])
+        if not uploaded:
+            st.warning("Silakan unggah file CSV atau Excel untuk memulai.")
+            st.stop()
+        raw_df = read_file(uploaded)
 
-with st.expander("Format data", expanded=True):
-    st.markdown(
-        """
-        Gunakan 3 kolom berikut:
+    # Layouting
+    tabs = st.tabs(["📊 Hasil & Analisis", "🖇️ Bagan Pedigree", "🔢 Matriks Hubungan (A)"])
 
-        | Animal_ID | Sire_ID | Dam_ID |
-        |---|---|---|
-        | I | - | - |
-        | P | - | - |
-        | C | I | P |
-        | D | I | P |
-        | B | D | C |
+    cols = list(raw_df.columns)
+    
+    with st.sidebar:
+        st.markdown("### 🔍 Pemetaan Kolom")
+        id_col = st.selectbox("Kolom Animal_ID", cols, index=0)
+        sire_col = st.selectbox("Kolom Sire_ID", cols, index=1 if len(cols)>1 else 0)
+        dam_col = st.selectbox("Kolom Dam_ID", cols, index=2 if len(cols)>2 else 0)
 
-        Gunakan tanda **`-`** untuk parent yang tidak diketahui.
-        """
-    )
+    try:
+        internal = standardize_input(raw_df, id_col, sire_col, dam_col)
+        std_df, res_df, matrix_df = calculate(internal)
+        
+        res_display_data = res_df[res_df["Tipe_Data"] == "Data input"]
+        
+        with tabs[0]:
+            st.subheader("📝 Ringkasan Data")
+            
+            # Metrics
+            m1, m2, m3, m4 = st.columns(4)
+            total_sapi = len(res_display_data)
+            inbred_sapi = len(res_display_data[res_display_data["Inbreeding_%"] > 0])
+            avg_f = float(res_display_data["Inbreeding_%"].mean())
+            max_f = float(res_display_data["Inbreeding_%"].max())
+            
+            m1.metric("Total Populasi", f"{total_sapi} ekor")
+            m2.metric("Sapi Inbred", f"{inbred_sapi} ekor")
+            m3.metric("Rata-rata F", f"{avg_f:.2f}%")
+            m4.metric("F Tertinggi", f"{max_f:.2f}%")
 
-mode = st.radio(
-    "Pilih sumber data",
-    ["Contoh dari gambar", "Contoh sapi lengkap", "Unggah file sendiri"],
-    horizontal=True,
-)
+            st.markdown("### 📋 Tabel Hasil Perhitungan")
+            st.dataframe(clean_display(res_display_data), use_container_width=True, height=400)
+            
+            # Additional Information based on Max F
+            st.markdown("### 💡 Analisis Dampak Populasi")
+            st.info(dampak_inbreeding(max_f))
+            
+            # Download options
+            st.markdown("### 📥 Unduh Hasil")
+            c1, c2 = st.columns(2)
+            csv = clean_display(res_df).to_csv(index=False).encode('utf-8')
+            c1.download_button("Download CSV", csv, "hasil_inbreeding.csv", "text/csv")
+            
+            # Simple Text Report for now
+            txt_report = dots_to_pedigree(res_display_data)
+            c2.download_button("Download Laporan Ringkas (TXT)", txt_report.encode('utf-8'), "laporan_inbreeding.txt", "text/plain")
 
-if mode == "Contoh dari gambar":
-    raw_df = contoh_dari_gambar()
-    explanation_image_example()
-elif mode == "Contoh sapi lengkap":
-    raw_df = contoh_sapi_lengkap()
-else:
-    uploaded = st.file_uploader("Unggah file CSV atau Excel", type=["csv", "xlsx"])
-    if uploaded is None:
-        st.info("Unggah file terlebih dahulu, atau gunakan contoh dari gambar.")
-        st.dataframe(clean_display(contoh_dari_gambar()), use_container_width=True)
-        st.stop()
-    raw_df = read_file(uploaded)
+        with tabs[1]:
+            st.subheader("🖇️ Visualisasi Bagan Pedigree")
+            st.markdown("Bagan ini menunjukkan hubungan keturunan antar sapi. Warna merah menunjukkan inbreeding tinggi (>25%).")
+            st.graphviz_chart(make_dot(res_df))
 
-st.subheader("1. Preview data")
-st.dataframe(clean_display(raw_df), use_container_width=True)
+        with tabs[2]:
+            st.subheader("🔢 Matriks Hubungan Aditif (Additive Relationship Matrix)")
+            st.markdown("Matriks ini menunjukkan nilai $A$ antar individu. Nilai diagonal adalah $1 + F$.")
+            st.dataframe(matrix_df, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"⚠️ Terjadi kesalahan dalam pengolahan data: {e}")
+        st.exception(e)
 
-columns = list(raw_df.columns)
+    # Footer
+    st.markdown("""
+        <div class="footer">
+            Developed with ❤️ | Created by Galuh Adi Insani
+        </div>
+    """, unsafe_allow_html=True)
 
-if len(columns) < 3:
-    st.error("File harus memiliki minimal 3 kolom.")
-    st.stop()
-
-default_id = columns.index("Animal_ID") if "Animal_ID" in columns else 0
-default_sire = columns.index("Sire_ID") if "Sire_ID" in columns else min(1, len(columns) - 1)
-default_dam = columns.index("Dam_ID") if "Dam_ID" in columns else min(2, len(columns) - 1)
-
-st.subheader("2. Pilih kolom")
-col1, col2, col3 = st.columns(3)
-with col1:
-    id_col = st.selectbox("Kolom Animal_ID", columns, index=default_id)
-with col2:
-    sire_col = st.selectbox("Kolom Sire_ID / pejantan", columns, index=default_sire)
-with col3:
-    dam_col = st.selectbox("Kolom Dam_ID / induk", columns, index=default_dam)
-
-try:
-    internal_df = standardize_input(raw_df, id_col, sire_col, dam_col)
-    standardized_df, result_df, matrix_df = calculate(internal_df)
-except Exception as error:
-    st.error(f"Perhitungan gagal: {error}")
-    st.stop()
-
-result_input_only = result_df[result_df["Tipe_Data"] == "Data input"].copy()
-result_input_only["Inbreeding_%"] = pd.to_numeric(result_input_only["Inbreeding_%"], errors="coerce").fillna(0)
-
-st.subheader("3. Ringkasan")
-total = len(result_input_only)
-inbred_count = int((result_input_only["Inbreeding_%"] > 0).sum())
-avg_f = float(result_input_only["Inbreeding_%"].mean()) if total else 0
-max_f = float(result_input_only["Inbreeding_%"].max()) if total else 0
-
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Total sapi", total)
-m2.metric("Sapi inbred", inbred_count)
-m3.metric("Rata-rata F", f"{avg_f:.2f}%")
-m4.metric("F tertinggi", f"{max_f:.2f}%")
-
-if inbred_count > 0:
-    st.success("Perhitungan berhasil. Kondisi inbreeding terdeteksi pada data ini.")
-else:
-    st.info("Perhitungan berhasil. Tidak ada inbreeding terdeteksi dari pedigree yang tersedia.")
-
-st.subheader("4. Hasil perhitungan inbreeding")
-st.dataframe(clean_display(result_input_only), use_container_width=True)
-
-st.subheader("5. Grafik inbreeding")
-chart = result_input_only[["Animal_ID", "Inbreeding_%"]].copy()
-st.bar_chart(chart.set_index("Animal_ID"))
-
-st.subheader("6. Bagan pedigree")
-max_nodes = st.slider("Maksimal node pada bagan", 20, 300, 150, 10)
-st.graphviz_chart(make_dot(result_df, max_nodes), use_container_width=True)
-
-st.subheader("7. Proses perhitungan")
-process_cols = [
-    "Animal_ID",
-    "Sire_ID",
-    "Dam_ID",
-    "Hubungan_Parent_A",
-    "Koefisien_Inbreeding_F",
-    "Inbreeding_%",
-    "Kondisi_Inbreeding",
-    "Proses_Perhitungan",
-]
-st.dataframe(clean_display(result_df[process_cols]), use_container_width=True)
-
-show_matrix = st.checkbox("Tampilkan matriks hubungan A", value=False)
-if show_matrix:
-    st.subheader("8. Matriks hubungan A")
-    st.dataframe(matrix_df.round(6), use_container_width=True)
-
-st.subheader("9. Download")
-d1, d2, d3 = st.columns(3)
-
-with d1:
-    st.download_button(
-        "Download data standar CSV",
-        data=to_csv_bytes(standardized_df),
-        file_name="pedigree_standar.csv",
-        mime="text/csv",
-    )
-
-with d2:
-    st.download_button(
-        "Download hasil CSV",
-        data=to_csv_bytes(result_df),
-        file_name="hasil_inbreeding_sapi.csv",
-        mime="text/csv",
-    )
-
-with d3:
-    st.download_button(
-        "Download hasil Excel",
-        data=to_excel_bytes(result_df, matrix_df if show_matrix else None),
-        file_name="hasil_inbreeding_sapi.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+if __name__ == "__main__":
+    main()
