@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/Users/macbookpro/Documents/GitHub/inbreed/quick_check.py", line 1, in <module>
+    import app
+  File "/Users/macbookpro/Documents/GitHub/inbreed/app.py", line 514
+    mode = st.radio(
+                    ^
+IndentationError: unindent does not match any outer indentation level
