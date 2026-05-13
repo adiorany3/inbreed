@@ -3806,6 +3806,160 @@ def summarize_missing_advanced_columns(result_df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+
+def build_tandem_selection_plan(
+    result_df: pd.DataFrame,
+    trait_sequence: list,
+    animals_per_stage: int = 10,
+    max_safe_f: float = 6.25,
+    include_only_breedable: bool = True,
+) -> pd.DataFrame:
+    """
+    Builds a staged tandem selection plan.
+
+    Tandem selection means selecting for one main trait at a time.
+    Example:
+    Stage 1 / G1: Body Weight
+    Stage 2 / G2: Fertility
+    Stage 3 / G3: Survival
+    Stage 4 / G4: Feed Efficiency
+    """
+    if not trait_sequence:
+        return pd.DataFrame()
+
+    df = result_df.copy()
+
+    if include_only_breedable and "Final_Breeding_Decision" in df.columns:
+        blocked_words = ["Do Not Breed", "Cull", "Terminal FS Only", "Commercial / Slaughter Only"]
+        pattern = "|".join(blocked_words)
+        df = df[~df["Final_Breeding_Decision"].astype(str).str.contains(pattern, case=False, na=False)].copy()
+
+    if "Inbreeding_%" in df.columns:
+        df = df[df["Inbreeding_%"] <= max_safe_f].copy()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    rows = []
+
+    for stage_idx, trait in enumerate(trait_sequence, start=1):
+        if trait not in df.columns:
+            continue
+
+        trait_values = pd.to_numeric(df[trait], errors="coerce")
+        stage_df = df.copy()
+        stage_df["_Trait_Value"] = trait_values
+        stage_df = stage_df.dropna(subset=["_Trait_Value"])
+
+        if stage_df.empty:
+            continue
+
+        # Rank active trait first, then use EBV, Selection Index, and low F as tie breakers.
+        sort_cols = ["_Trait_Value"]
+        ascending = [False]
+
+        if "Selection_Index" in stage_df.columns:
+            sort_cols.append("Selection_Index")
+            ascending.append(False)
+
+        if "EBV" in stage_df.columns:
+            sort_cols.append("EBV")
+            ascending.append(False)
+
+        if "Inbreeding_%" in stage_df.columns:
+            sort_cols.append("Inbreeding_%")
+            ascending.append(True)
+
+        stage_df = stage_df.sort_values(sort_cols, ascending=ascending).head(animals_per_stage)
+
+        for rank, (_, row) in enumerate(stage_df.iterrows(), start=1):
+            f_value = float(row.get("Inbreeding_%", 0))
+            if f_value <= 0:
+                risk_note = "Very safe based on F"
+            elif f_value <= max_safe_f:
+                risk_note = "Safe under threshold"
+            elif f_value < 12.5:
+                risk_note = "Monitor inbreeding"
+            else:
+                risk_note = "High inbreeding risk"
+
+            rows.append({
+                "Stage": f"Stage {stage_idx}",
+                "Target_Generation": f"G{stage_idx}",
+                "Selection_Focus": trait,
+                "Rank": rank,
+                "Animal_ID": row.get("Animal_ID"),
+                "Sex_Role": row.get("Sex_Role", "-"),
+                "Line": row.get("Line", "-"),
+                "Generation": row.get("Generation", "-"),
+                "Trait_Value": round(float(row["_Trait_Value"]), 4),
+                "EBV": round(float(row.get("EBV", 0)), 4),
+                "Selection_Index": round(float(row.get("Selection_Index", 0)), 4),
+                "Inbreeding_%": round(f_value, 4),
+                "Final_Breeding_Decision": row.get("Final_Breeding_Decision", "-"),
+                "Risk_Note": risk_note,
+            })
+
+    return pd.DataFrame(rows)
+
+
+def compare_tandem_vs_index(result_df: pd.DataFrame, tandem_plan: pd.DataFrame, top_n: int = 10) -> pd.DataFrame:
+    """
+    Compares top tandem candidates with top Multi-Trait Selection Index candidates.
+    """
+    if tandem_plan.empty:
+        return pd.DataFrame()
+
+    tandem_animals = set(tandem_plan["Animal_ID"].astype(str).head(top_n).tolist())
+
+    df = result_df.copy()
+    if "Selection_Index" not in df.columns:
+        return pd.DataFrame()
+
+    index_top = df.sort_values("Selection_Index", ascending=False).head(top_n).copy()
+    index_top_animals = set(index_top["Animal_ID"].astype(str).tolist())
+
+    overlap = sorted(tandem_animals.intersection(index_top_animals))
+    tandem_only = sorted(tandem_animals - index_top_animals)
+    index_only = sorted(index_top_animals - tandem_animals)
+
+    return pd.DataFrame({
+        "Comparison": [
+            "Candidates appearing in both methods",
+            "Candidates prioritized only by tandem selection",
+            "Candidates prioritized only by multi-trait index",
+        ],
+        "Animal_IDs": [
+            ", ".join(overlap) if overlap else "-",
+            ", ".join(tandem_only) if tandem_only else "-",
+            ", ".join(index_only) if index_only else "-",
+        ],
+        "Interpretation": [
+            "These are strong candidates because both methods identify them.",
+            "These candidates are strong for a specific staged trait focus.",
+            "These candidates are strong when all selected traits are evaluated together.",
+        ],
+    })
+
+
+def summarize_tandem_strategy(tandem_plan: pd.DataFrame) -> pd.DataFrame:
+    """
+    Summarizes tandem selection by stage/focus trait.
+    """
+    if tandem_plan.empty:
+        return pd.DataFrame()
+
+    summary = tandem_plan.groupby(["Stage", "Target_Generation", "Selection_Focus"]).agg(
+        Candidate_Count=("Animal_ID", "count"),
+        Average_Trait_Value=("Trait_Value", "mean"),
+        Average_EBV=("EBV", "mean"),
+        Average_Selection_Index=("Selection_Index", "mean"),
+        Average_F=("Inbreeding_%", "mean"),
+    ).reset_index()
+
+    return summary.round(4)
+
+
 def render_section_header(title: str, description: str = "", icon: str = "📌"):
     """
     Consistent section header for better readability.
@@ -4192,6 +4346,7 @@ def main():
             "7. Breeder Report",
             "8. Field Guide",
             "9. Advanced Breeding Management",
+            "10. Tandem Selection Strategy",
         ])
 
         with tabs[0]:
@@ -6099,6 +6254,171 @@ def main():
                 "text/csv",
                 use_container_width=True,
             )
+
+
+        with tabs[9]:
+            render_section_header(
+                "Tandem Selection Strategy",
+                "A staged selection strategy that focuses on one priority trait at a time across generations.",
+                "🎯"
+            )
+            render_tab_help(
+                "Tandem Selection",
+                [
+                    "Unlike Multi-Trait Selection Index, tandem selection prioritizes one trait per stage.",
+                    "Use this when a breeding program needs sequential improvement, for example growth first, then fertility, then survival.",
+                    "The system still checks inbreeding and breeding decision labels to avoid unsafe candidates."
+                ]
+            )
+
+            st.markdown("### 1. Strategy Settings")
+
+            available_tandem_traits = []
+            base_trait_candidates = [
+                "Phenotype", "Body_Weight", "Growth_Rate", "Fertility",
+                "Survival_Rate", "Feed_Efficiency", "Egg_Production",
+                "Egg_Weight", "Hatchability", "Milk_Yield",
+                "Genomic_EBV", "Combined_Genetic_Value", "Selection_Index"
+            ]
+
+            for col in base_trait_candidates:
+                if col in res_display_data.columns:
+                    available_tandem_traits.append(col)
+
+            for col in res_display_data.columns:
+                if col.startswith("Trait_") and col not in available_tandem_traits:
+                    available_tandem_traits.append(col)
+
+            if not available_tandem_traits:
+                st.warning(
+                    "No numeric trait is available for tandem selection. Add Phenotype or other numeric trait columns."
+                )
+            else:
+                default_sequence = [
+                    trait for trait in ["Body_Weight", "Fertility", "Survival_Rate", "Feed_Efficiency"]
+                    if trait in available_tandem_traits
+                ]
+
+                if not default_sequence:
+                    default_sequence = available_tandem_traits[:min(4, len(available_tandem_traits))]
+
+                ts_col1, ts_col2, ts_col3 = st.columns(3)
+
+                with ts_col1:
+                    tandem_sequence = st.multiselect(
+                        "Trait sequence by stage",
+                        available_tandem_traits,
+                        default=default_sequence,
+                        help="Order matters. The first selected trait is used in Stage 1, the second in Stage 2, and so on."
+                    )
+
+                with ts_col2:
+                    tandem_top_n = st.slider(
+                        "Candidates per stage",
+                        min_value=3,
+                        max_value=30,
+                        value=10,
+                        step=1,
+                    )
+
+                with ts_col3:
+                    tandem_safe_f = st.slider(
+                        "Maximum F threshold (%)",
+                        min_value=0.0,
+                        max_value=25.0,
+                        value=6.25,
+                        step=0.25,
+                    )
+
+                include_only_breedable = st.checkbox(
+                    "Exclude animals marked as Do Not Breed, Cull, Terminal FS, or Commercial Only",
+                    value=True,
+                )
+
+                tandem_plan = build_tandem_selection_plan(
+                    res_display_data,
+                    trait_sequence=tandem_sequence,
+                    animals_per_stage=tandem_top_n,
+                    max_safe_f=tandem_safe_f,
+                    include_only_breedable=include_only_breedable,
+                )
+
+                st.markdown("### 2. Tandem Selection Plan by Stage")
+
+                if tandem_plan.empty:
+                    st.warning(
+                        "No tandem selection plan could be generated. Try lowering the F threshold, selecting different traits, or allowing non-breedable animals for review."
+                    )
+                else:
+                    st.dataframe(
+                        tandem_plan,
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                    st.markdown("### 3. Stage Summary")
+                    tandem_summary = summarize_tandem_strategy(tandem_plan)
+                    st.dataframe(
+                        tandem_summary,
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                    if not tandem_summary.empty:
+                        chart_df = tandem_summary.copy()
+                        chart_df["Stage_Focus"] = chart_df["Stage"] + " - " + chart_df["Selection_Focus"]
+                        st.bar_chart(chart_df.set_index("Stage_Focus")["Average_Trait_Value"])
+
+                    st.markdown("### 4. Tandem Selection vs Multi-Trait Index")
+
+                    comparison_df = compare_tandem_vs_index(
+                        res_display_data,
+                        tandem_plan,
+                        top_n=tandem_top_n,
+                    )
+
+                    if comparison_df.empty:
+                        st.info(
+                            "Comparison is not available because Selection_Index is missing or tandem plan is empty."
+                        )
+                    else:
+                        st.dataframe(
+                            comparison_df,
+                            hide_index=True,
+                            use_container_width=True,
+                        )
+
+                    st.markdown("### 5. Breeder Interpretation")
+
+                    selected_focus_text = " → ".join(tandem_sequence)
+
+                    st.info(f"""
+                    **Tandem strategy sequence:** {selected_focus_text}
+
+                    Use the candidates in each stage as a staged improvement plan. 
+                    For example, Stage 1 can focus on growth or body weight, Stage 2 can focus on fertility, 
+                    Stage 3 can focus on survival, and Stage 4 can focus on feed efficiency.
+
+                    Tandem selection is useful when the breeder wants to fix one priority trait first before shifting selection pressure to the next trait.
+                    However, animals with high inbreeding or unsafe breeding decisions should still be avoided even if they perform well in the active trait.
+                    """)
+
+                    st.download_button(
+                        "Download Tandem Selection Plan CSV",
+                        tandem_plan.to_csv(index=False).encode("utf-8"),
+                        "tandem_selection_plan.csv",
+                        "text/csv",
+                        use_container_width=True,
+                    )
+
+                    if not tandem_summary.empty:
+                        st.download_button(
+                            "Download Tandem Selection Summary CSV",
+                            tandem_summary.to_csv(index=False).encode("utf-8"),
+                            "tandem_selection_summary.csv",
+                            "text/csv",
+                            use_container_width=True,
+                        )
 
         render_footer()
 
