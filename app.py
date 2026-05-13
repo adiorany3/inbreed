@@ -1119,7 +1119,7 @@ def main():
                 
                 1. **Terminal Cross:** Semua anak hasil persilangan dijual (tidak dijadikan bibit). Memberikan heterosis 100% pada anak.
                 2. **Rotational Crossing:** Menggunakan dua atau tiga bangsa secara bergantian. Mempertahankan heterosis sekitar 67% (2 bangsa) atau 86% (3 bangsa) pada generasi berkelanjutan.
-                3. **Backcrossing:** Mengawayinkan anak kembali ke salah satu bangsa murni tetuanya. Digunakan untuk memasukkan sifat spesifik dari satu bangsa ke bangsa lain.
+                3. **Backcrossing:** Mengawinkan anak kembali ke salah satu bangsa murni tetuanya. Digunakan untuk memasukkan sifat spesifik dari satu bangsa ke bangsa lain.
                 
                 **Rekomendasi:**
                 - Gunakan pejantan dari bangsa yang unggul pada sifat pertumbuhan.
@@ -1133,7 +1133,7 @@ def main():
             - **EBV** digunakan untuk kemajuan genetik jangka panjang (seleksi).
             - **Heterosis** digunakan untuk keuntungan produksi jangka pendek (persilangan).
             
-            Sistem kami membantu Anda menjaga agar tingkat inbreeding tetap rendah agar potensi heterosis saat persilangan nanti tetap optimal.
+            Sistem kami membantu Anda menjaga agar tingkat inbreeding tetap rendah agar potensi heterosis saat persilangan nanti tetap optimal. Lakukan regulasi dan evaluasi rutin untuk memastikan populasi tetap sehat dan produktif, serta terus dilakukan recording data untuk analisis genetik yang lebih akurat di masa depan.
             """)
         
     except Exception as e:
