@@ -875,7 +875,7 @@ def main():
         - `Animal_ID` (Cattle ID)
         - `Sire_ID` (Sire ID)
         - `Dam_ID` (Dam ID)
-            Optional:
+        <b>Optional:</b>
             - `Phenotype` (Phenotype value for EBV calculation, example: milk yield, growth rate, etc.)
 
         Use `-` for empty data.
