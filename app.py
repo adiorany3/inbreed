@@ -1,354 +1,396 @@
 import io
-import tempfile
 import pathlib
-import graphviz
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 import streamlit as st
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    REPORTLAB_AVAILABLE = True
+except Exception:
+    REPORTLAB_AVAILABLE = False
 
 
 # ============================================================
-# FINAL FIX - KALKULATOR INBREEDING TERNAK
+# BREEDING & INBREEDING ANALYTICS - APP.PY
+# Informative English Version
 # ============================================================
 
 EMPTY = "-"
+
 UNKNOWN_VALUES = {
     "", " ", "-", "--", "0", "na", "n/a", "nan", "none", "null",
-    "unknown", "unknown", "none", "empty",
+    "unknown", "empty",
 }
 
+
 def is_unknown(value) -> bool:
-    if value is None: return True
+    if value is None:
+        return True
     try:
-        if pd.isna(value): return True
-    except: pass
+        if pd.isna(value):
+            return True
+    except Exception:
+        pass
+
     text = str(value).strip()
     return text.lower() in UNKNOWN_VALUES
 
 
 def clean_id(value) -> Optional[str]:
-    if is_unknown(value): return None
+    if is_unknown(value):
+        return None
+
     text = str(value).strip()
-    # Handle numeric IDs ending in .0 from Excel
+
+    # Fix numeric IDs from Excel, for example 101.0 becomes 101
     if text.endswith(".0"):
         try:
             num = float(text)
-            if num.is_integer(): text = str(int(num))
-        except: pass
+            if num.is_integer():
+                text = str(int(num))
+        except Exception:
+            pass
+
     return text
 
 
 def show_value(value) -> str:
-    if is_unknown(value): return EMPTY
+    if is_unknown(value):
+        return EMPTY
     return str(value).strip()
 
 
 def clean_display(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
+
     for col in out.columns:
         if pd.api.types.is_numeric_dtype(out[col]):
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
         else:
-            out[col] = out[col].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x)
+            out[col] = out[col].astype(str).apply(
+                lambda x: EMPTY if is_unknown(x) else x
+            )
+
     return out
 
 
 def kondisi_inbreeding(percent: float) -> str:
-    if percent <= 0: return "Not inbred"
-    if percent < 6.25: return "Low inbreeding"
-    if percent < 12.5: return "Moderate inbreeding"
-    if percent < 25: return "High inbreeding"
+    if percent <= 0:
+        return "Not inbred"
+    if percent < 6.25:
+        return "Low inbreeding"
+    if percent < 12.5:
+        return "Moderate inbreeding"
+    if percent < 25:
+        return "High inbreeding"
     return "Very high inbreeding"
 
 
 def rekomendasi(percent: float) -> str:
-    if percent <= 0: return "Safe based on pedigree: no inbreeding detected."
-    if percent < 6.25: return "Still low, but monitoring is required."
-    if percent < 12.5: return "Requires attention. Avoid repeating matings between relatives."
-    if percent < 25: return "High risk. Use mates from different lineages."
-    return "Very high risk. Close relative matings should be avoided."
+    if percent <= 0:
+        return "Safe based on pedigree: no inbreeding detected."
+    if percent < 6.25:
+        return "Low risk, but pedigree monitoring is still recommended."
+    if percent < 12.5:
+        return "Requires attention. Avoid repeated mating between related animals."
+    if percent < 25:
+        return "High risk. Use mates from unrelated lineages."
+    return "Very high risk. Avoid close-relative mating and do not prioritize as breeding stock."
 
 
 def dampak_inbreeding(percent: float) -> str:
-    """Provides additional information on biological impacts based on F percentage."""
     if percent <= 0:
-        return "**Impact:** Maximum genetic variability maintained. No inbreeding depression risk detected."
-    elif percent < 6.25:
-        return "**Impact:** Minimal influence on performance. Cumulative effects begin to appear if it occurs continuously over several generations."
-    elif percent < 12.5:
-        return "**Impact:** Potential reduction in production performance (growth, milk production) by approximately 2-5%. Slight increase in risk of recessive genetic diseases."
-    elif percent < 25:
-        return "**Impact:** Inbreeding depression becomes clearly visible. Decreased fertility, weakened immune system, and potential emergence of birth defects (lethal traits)."
-    else:
-        return "**Critical Impact:** High risk of embryonic death, permanent infertility, and drastic reduction in vitality. Population is at danger of permanent genetic quality decline."
+        return "Impact: Genetic variation is maintained. No inbreeding depression risk was detected from the available pedigree."
+    if percent < 6.25:
+        return "Impact: Minimal short-term influence, but cumulative effects may appear if related mating continues across generations."
+    if percent < 12.5:
+        return "Impact: Possible reduction in production performance, fertility, growth, milk yield, and higher risk of recessive genetic problems."
+    if percent < 25:
+        return "Impact: Inbreeding depression may become visible through weaker immunity, lower fertility, slow growth, and possible birth defects."
+    return "Critical impact: Very high risk of embryo loss, infertility, low vitality, congenital defects, and long-term decline in genetic quality."
 
 
 def contoh_sapi_lengkap() -> pd.DataFrame:
     return pd.DataFrame({
-        "Animal_ID": ["SIRE_01", "DAM_01", "COW_C", "COW_D", "COW_X", "COW_B", "COW_A", "COW_E", "COW_F"],
-        "Sire_ID": ["-", "-", "SIRE_01", "SIRE_01", "SIRE_01", "COW_D", "COW_B", "COW_B", "COW_D"],
-        "Dam_ID": ["-", "-", "DAM_01", "DAM_01", "DAM_01", "COW_C", "COW_C", "-", "-"],
-        "Phenotype": [550, 420, 480, 500, 490, 460, 470, 430, 440]
+        "Animal_ID": [
+            "SIRE_01", "DAM_01", "COW_C", "COW_D", "COW_X",
+            "COW_B", "COW_A", "COW_E", "COW_F"
+        ],
+        "Sire_ID": [
+            "-", "-", "SIRE_01", "SIRE_01", "SIRE_01",
+            "COW_D", "COW_B", "COW_B", "COW_D"
+        ],
+        "Dam_ID": [
+            "-", "-", "DAM_01", "DAM_01", "DAM_01",
+            "COW_C", "COW_C", "-", "-"
+        ],
+        "Phenotype": [550, 420, 480, 500, 490, 460, 470, 430, 440],
     })
-
-
-def calculate_breeding_value(res_df: pd.DataFrame, phenotype_col: str, h2: float) -> pd.DataFrame:
-    """
-    Calculates simple Estimated Breeding Value (EBV).
-    EBV = h^2 * (P - P_avg)
-    """
-    if phenotype_col not in res_df.columns:
-        res_df["EBV"] = 0.0
-        return res_df
-        
-    # Take input data only for population average
-    input_data = res_df[res_df["Tipe_Data"] == "Input data"]
-    if input_data.empty:
-        res_df["EBV"] = 0.0
-        return res_df
-        
-    pop_avg = pd.to_numeric(input_data[phenotype_col], errors='coerce').mean()
-    
-    def calc_ebv(row):
-        try:
-            p_val = float(row[phenotype_col])
-            return h2 * (p_val - pop_avg)
-        except:
-            return 0.0
-            
-    res_df["EBV"] = res_df.apply(calc_ebv, axis=1)
-    return res_df
 
 
 def calculate_selection_response(h2: float, sd_p: float, intensity: float) -> float:
     """
-    Calculates Selection Response (R).
-    R = i * h^2 * sigma_p
+    Selection response formula:
+    R = i * h2 * sigma_p
     """
     return intensity * h2 * sd_p
 
 
-def calculate_inbreeding_depression(f_val: float, depression_rate: float) -> float:
+def calculate_inbreeding_depression(f_percent: float, depression_rate: float) -> float:
     """
-    Calculates Inbreeding Depression.
-    Performance reduction = F * Depression Rate (per 1% F)
+    Estimated performance reduction:
+    Depression = F (%) * depression rate per 1% F
     """
-    return f_val * depression_rate
+    return f_percent * depression_rate
 
 
 def analyze_hardy_weinberg(result_df: pd.DataFrame) -> Dict:
-    """
-    Analyzes Hardy-Weinberg Equilibrium (HWE) in the population.
-    Theoretically, inbreeding (F) is a measure of deviation from expected heterozygosity (HWE).
-    F > 0 indicates a heterozygote deficit.
-    """
-    avg_f = result_df["Inbreeding_%"].mean() / 100.0  # FIS Proportion
-    
-    # Practical threshold: F > 0.05 (FIS > 5%) is considered a significant deviation from HWE
+    avg_f = result_df["Inbreeding_%"].mean() / 100.0
     is_deviating = avg_f > 0.05
-    status = "⚠️ Deviation Occurring (Not in Equilibrium)" if is_deviating else "✅ Near Equilibrium"
-    
+
+    status = "Deviation Occurring - Not in Equilibrium" if is_deviating else "Near Equilibrium"
+
     insight = (
         f"The average population inbreeding coefficient is {avg_f:.4f}. "
-        "In population genetics, this value indicates the extent to which the population deviates from the ideal Hardy-Weinberg condition (random mating)."
+        "In population genetics, this value can be used as an indicator of deviation "
+        "from the ideal random mating condition."
     )
-    
+
     if is_deviating:
-        saran = [
-            "**Outcrossing:** Introduce sires/semen from outside the population that are unrelated.",
-            "**Increase Ne:** Increase the number of active sires in the breeding process to increase effective population size.",
-            "**Sire Rotation:** Avoid excessive use of a single 'Popular Sire' on many females.",
-            "**Crossbreeding:** If the goal is commercial production, perform crossbreeding between breeds to restore heterozygosity."
+        suggestions = [
+            "Outcrossing: introduce unrelated sires or semen from outside the population.",
+            "Increase effective population size by using more active sires.",
+            "Apply sire rotation and avoid excessive use of one popular sire.",
+            "Consider crossbreeding for commercial production to restore heterozygosity.",
         ]
     else:
-        saran = [
-            "The current mating system is still able to maintain genetic variation.",
-            "Continue monitoring pedigrees to avoid sudden increases in inbreeding in the next generation."
+        suggestions = [
+            "The current mating pattern still appears able to maintain genetic variation.",
+            "Continue monitoring pedigrees to prevent sudden increases in inbreeding.",
         ]
 
     return {
         "status": status,
         "insight": insight,
-        "saran": saran,
-        "is_deviating": is_deviating
+        "saran": suggestions,
+        "is_deviating": is_deviating,
     }
 
 
 def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
     cols = [id_col, sire_col, dam_col]
+
     if phenotype_col and phenotype_col in raw_df.columns:
         cols.append(phenotype_col)
         df = raw_df[cols].copy()
         df.columns = ["Animal_ID", "Sire_ID", "Dam_ID", "Phenotype"]
     else:
         df = raw_df[cols].copy()
-        df.columns = ["Animal_ID", "Sire_ID", "Project_ID"]
+        df.columns = ["Animal_ID", "Sire_ID", "Dam_ID"]
 
-    # Clean IDs but preserve Phenotype if it exists
     for col in df.columns:
         if col != "Phenotype":
             df[col] = df[col].apply(clean_id)
-            
+
     df = df.dropna(subset=["Animal_ID"]).copy()
-    if df.empty: raise ValueError("No valid Animal_ID found.")
+
+    if df.empty:
+        raise ValueError("No valid Animal_ID was found.")
+
     return df.reset_index(drop=True)
 
 
-def klasifikasi_ternak(ebv: float, f_percent: float, dam_id: Optional[str] = None) -> str:
-    """Classifies livestock based on breeding standards."""
+def klasifikasi_ternak(ebv: float, f_percent: float) -> str:
     if ebv > 0.5 and f_percent < 3.125:
         return "Elite Stock"
-    elif ebv > 0 and f_percent < 6.25:
+    if ebv > 0 and f_percent < 6.25:
         return "Breeding Stock"
-    elif ebv > 1.0:
+    if ebv > 1.0:
         return "Line Breeding"
-    elif f_percent > 12.5:
-        return "Final Stock (Slaughter Only)"
-    else:
-        return "Commercial"
+    if f_percent > 12.5:
+        return "Final Stock - Slaughter Only"
+    return "Commercial"
 
 
-def interpretasi_pemuliaan(ebv: float, f_percent: float, depression: float, animal_id: str, results_df: Optional[pd.DataFrame] = None) -> str:
-    """Provides comprehensive interpretation for breeding value and inbreeding."""
+def interpretasi_pemuliaan(
+    ebv: float,
+    f_percent: float,
+    animal_id: str,
+    results_df: Optional[pd.DataFrame] = None,
+) -> str:
     status_ebv = "Superior" if ebv > 0 else "Below average"
-    klasifikasi = klasifikasi_ternak(ebv, f_percent)
-    
-    # Detect if this is a Dam (exists in Dam_ID column in population)
-    is_dam = False
-    if results_df is not None:
-        is_dam = animal_id in results_df["Dam_ID"].values
+    classification = klasifikasi_ternak(ebv, f_percent)
 
-    msg = f"**Genetic Status:** {status_ebv} (EBV: {ebv:.2f}). "
-    
-    if klasifikasi == "Elite Stock":
+    is_dam = False
+    if results_df is not None and "Dam_ID" in results_df.columns:
+        is_dam = animal_id in results_df["Dam_ID"].astype(str).values
+
+    msg = f"Genetic Status: {status_ebv} with EBV {ebv:.2f}. "
+
+    if classification == "Elite Stock":
         if is_dam:
-            msg += f"**Classification:** `Elite Stock (Core Female)`. "
-            msg += "Recommendation: Highly ideal as core dam or embryo donor (ET). Genetics are very valuable for producing superior sire candidates."
+            msg += (
+                "Classification: Elite Stock - Core Female. "
+                "Recommendation: highly suitable as a core dam or embryo donor candidate."
+            )
         else:
-            msg += f"**Classification:** `Elite Stock (Core Sire)`. "
-            msg += "Recommendation: Highly ideal as primary sire candidate or frozen semen source. Maintain this lineage."
-    elif klasifikasi == "Breeding Stock":
-        msg += f"**Classification:** `{klasifikasi}`. "
-        msg += "Recommendation: Suitable as replacement dam to produce the next generation."
-    elif klasifikasi == "Line Breeding":
-        msg += f"**Classification:** `{klasifikasi}`. "
-        msg += "Recommendation: Extraordinary genetic potential. If inbreeding is controlled, use for fixation of superior traits (Line Breeding)."
-    elif klasifikasi == "Final Stock (Slaughter Only)":
-        msg += f"**Classification:** `{klasifikasi}`. "
-        msg += "Recommendation: Not recommended for breeding. Should be used for slaughter or fattening due to high inbreeding depression risk."
+            msg += (
+                "Classification: Elite Stock - Core Sire. "
+                "Recommendation: highly suitable as a main sire candidate or frozen semen source."
+            )
+    elif classification == "Breeding Stock":
+        msg += (
+            "Classification: Breeding Stock. "
+            "Recommendation: suitable as replacement breeding stock for the next generation."
+        )
+    elif classification == "Line Breeding":
+        msg += (
+            "Classification: Line Breeding. "
+            "Recommendation: strong genetic potential, but kinship must be controlled carefully."
+        )
+    elif classification == "Final Stock - Slaughter Only":
+        msg += (
+            "Classification: Final Stock - Slaughter Only. "
+            "Recommendation: not recommended for breeding because of high inbreeding risk."
+        )
     else:
-        msg += f"**Classification:** `{klasifikasi}`. "
-        msg += "Recommendation: Suitable for commercial production (milk/meat), but does not have special genetic value for population improvement."
-        
+        msg += (
+            "Classification: Commercial. "
+            "Recommendation: suitable for commercial production, but not prioritized for genetic improvement."
+        )
+
     return msg
 
 
 def calculate_stats(df: pd.DataFrame):
-    """Calculates correlation and regression between Inbreeding and Phenotype."""
     try:
-        # Filter data with valid phenotypes
+        if "Phenotype" not in df.columns:
+            return None
+
         valid_df = df[df["Phenotype"].apply(lambda x: not is_unknown(x))].copy()
+
         if len(valid_df) < 3:
             return None
-        
-        valid_df["Phenotype"] = pd.to_numeric(valid_df["Phenotype"])
-        valid_df["F"] = pd.to_numeric(valid_df["Inbreeding_%"])
-        
-        # Pearson Correlation
+
+        valid_df["Phenotype"] = pd.to_numeric(valid_df["Phenotype"], errors="coerce")
+        valid_df["F"] = pd.to_numeric(valid_df["Inbreeding_%"], errors="coerce")
+        valid_df = valid_df.dropna(subset=["Phenotype", "F"])
+
+        if len(valid_df) < 3:
+            return None
+
         correlation = valid_df["F"].corr(valid_df["Phenotype"])
-        
-        # Simple Linear Regression (Y = a + bX)
+
         x = valid_df["F"]
         y = valid_df["Phenotype"]
         n = len(valid_df)
-        
-        denominator = (n * (x**2).sum() - (x.sum())**2)
-        if denominator == 0: return None
+
+        denominator = (n * (x ** 2).sum() - (x.sum()) ** 2)
+
+        if denominator == 0:
+            return None
 
         b = (n * (x * y).sum() - x.sum() * y.sum()) / denominator
         a = (y.sum() - b * x.sum()) / n
-        r_squared = correlation**2
-        
+        r_squared = correlation ** 2 if correlation == correlation else 0
+
         return {
             "correlation": correlation,
             "b": b,
             "a": a,
-            "r_squared": r_squared
+            "r_squared": r_squared,
         }
-    except:
+    except Exception:
         return None
 
 
 def calculate(df_input, h2=0.3, depression_rate=1.0):
-    # 1. Identify missing founders
     animal_ids = set(df_input["Animal_ID"])
     parent_ids = set(df_input["Sire_ID"].dropna()).union(set(df_input["Dam_ID"].dropna()))
     missing = sorted(parent_ids - animal_ids)
-    
-    # 2. Complete the pedigree
-    founder_df = pd.DataFrame({"Animal_ID": missing, "Sire_ID": [None]*len(missing), "Dam_ID": [None]*len(missing)})
+
+    founder_df = pd.DataFrame({
+        "Animal_ID": missing,
+        "Sire_ID": [None] * len(missing),
+        "Dam_ID": [None] * len(missing),
+    })
+
     if "Phenotype" in df_input.columns:
         founder_df["Phenotype"] = None
-        
+
     df_full = pd.concat([founder_df, df_input], ignore_index=True)
-    
-    # 3. Build lookup map
+
     parents_map = {}
     pheno_map = {}
+
     for row in df_full.itertuples(index=False):
         if row.Animal_ID:
-            s_val = None if (row.Sire_ID is None or (isinstance(row.Sire_ID, float) and np.isnan(row.Sire_ID))) else str(row.Sire_ID)
-            d_val = None if (row.Dam_ID is None or (isinstance(row.Dam_ID, float) and np.isnan(row.Dam_ID))) else str(row.Dam_ID)
+            s_val = None if is_unknown(row.Sire_ID) else str(row.Sire_ID)
+            d_val = None if is_unknown(row.Dam_ID) else str(row.Dam_ID)
+
             parents_map[str(row.Animal_ID)] = (s_val, d_val)
-            if hasattr(row, 'Phenotype'):
+
+            if hasattr(row, "Phenotype"):
                 pheno_map[str(row.Animal_ID)] = row.Phenotype
-            
-    # 4. Topological Sort
+
     order = []
     state = {}
-    def visit(a):
-        if a is None: return
-        status = state.get(a, 0)
-        if status == 1: raise ValueError(f"Siklus terdeteksi pada {a}")
-        if status == 2: return
-        state[a] = 1
-        s, d = parents_map.get(a, (None, None))
-        for p in [s, d]:
-            if p is not None: visit(p)
-        state[a] = 2
-        order.append(a)
-    for a in list(parents_map.keys()): visit(a)
-    
-    # 5. Relationship Matrix (A) Perhitungan - OPTIMIZED FOR NUMPY (Henderson's Method)
+
+    def visit(animal):
+        if animal is None:
+            return
+
+        status = state.get(animal, 0)
+
+        if status == 1:
+            raise ValueError(f"Pedigree cycle detected at {animal}. Please check the parent records.")
+
+        if status == 2:
+            return
+
+        state[animal] = 1
+        sire, dam = parents_map.get(animal, (None, None))
+
+        for parent in [sire, dam]:
+            if parent is not None:
+                visit(parent)
+
+        state[animal] = 2
+        order.append(animal)
+
+    for animal in list(parents_map.keys()):
+        visit(animal)
+
     n = len(order)
-    idx_map = {a: i for i, a in enumerate(order)}
+    idx_map = {animal: i for i, animal in enumerate(order)}
     A = np.zeros((n, n), dtype=np.float32)
-    rows = []
-    
-    # Pre-calculate population average for EBV
-    pop_phenos = [pd.to_numeric(v) for v in pheno_map.values() if v is not None and not is_unknown(v)]
-    pop_avg = np.mean(pop_phenos) if pop_phenos else 0
-    
-    # Map parents to indices once
+
+    phenotype_values = [
+        pd.to_numeric(v, errors="coerce")
+        for v in pheno_map.values()
+        if v is not None and not is_unknown(v)
+    ]
+    phenotype_values = [v for v in phenotype_values if not pd.isna(v)]
+    pop_avg = np.mean(phenotype_values) if phenotype_values else 0
+
     parent_indices = []
-    for a in order:
-        s, d = parents_map.get(a, (None, None))
-        si = idx_map.get(s) if s is not None else None
-        di = idx_map.get(d) if d is not None else None
+    for animal in order:
+        sire, dam = parents_map.get(animal, (None, None))
+        si = idx_map.get(sire) if sire is not None else None
+        di = idx_map.get(dam) if dam is not None else None
         parent_indices.append((si, di))
 
-    # Pre-calculate matrix to avoid slow nested loops for large data
-    # Matrix A is symmetric, values only depend on ancestors (already in order)
+    rows = []
+
     for i in range(n):
         si, di = parent_indices[i]
-        
-        # OFF-DIAGONAL using vector operations for rows 0 to i-1
+
         if si is not None and di is not None:
             A[i, 0:i] = A[0:i, i] = 0.5 * (A[si, 0:i] + A[di, 0:i])
             F = 0.5 * A[si, di]
@@ -360,71 +402,81 @@ def calculate(df_input, h2=0.3, depression_rate=1.0):
             F = 0.0
         else:
             F = 0.0
-            
+
         A[i, i] = 1.0 + F
-        
-        # Data preparation for results
-        p_val = pheno_map.get(order[i])
+
+        animal_id = order[i]
+        p_val = pheno_map.get(animal_id)
+
         ebv = 0.0
-        depresi = calculate_inbreeding_depression(F * 100, depression_rate)
-        
         if p_val is not None and not is_unknown(p_val):
             try:
                 ebv = h2 * (float(p_val) - pop_avg)
-            except:
+            except Exception:
                 ebv = 0.0
 
-        # CALCULATE HETEROSIS VALUE (H)
-        # H = P_offspring - 0.5 * (P_sire + P_dam)
         heterosis = 0.0
         if si is not None and di is not None and p_val is not None and not is_unknown(p_val):
             p_sire = pheno_map.get(order[si])
             p_dam = pheno_map.get(order[di])
-            if p_sire is not None and not is_unknown(p_sire) and p_dam is not None and not is_unknown(p_dam):
+
+            if not is_unknown(p_sire) and not is_unknown(p_dam):
                 try:
                     p_anak = float(p_val)
                     p_avg_parents = 0.5 * (float(p_sire) + float(p_dam))
                     heterosis = p_anak - p_avg_parents
-                except:
+                except Exception:
                     heterosis = 0.0
 
+        depression = calculate_inbreeding_depression(F * 100, depression_rate)
+
         rows.append({
-            "Animal_ID": order[i],
-            "Sire_ID": parents_map.get(order[i])[0],
-            "Dam_ID": parents_map.get(order[i])[1],
+            "Animal_ID": animal_id,
+            "Sire_ID": parents_map.get(animal_id)[0],
+            "Dam_ID": parents_map.get(animal_id)[1],
             "Phenotype": show_value(p_val),
             "EBV": round(float(ebv), 4),
             "Heterosis": round(float(heterosis), 4),
-            "Inbreeding_Depression": f"-{round(float(depresi), 4)}",
+            "Inbreeding_Depression": round(float(depression), 4),
             "Inbreeding_%": round(float(F * 100), 4),
-            "Data_Type": "Additional founder" if order[i] in missing else "Input data"
+            "Data_Type": "Additional founder" if animal_id in missing else "Input data",
         })
-    
+
     res_df = pd.DataFrame(rows)
 
-    # Post-process to add classification and interpretation with full population context
-    res_df["Classification"] = res_df.apply(lambda r: klasifikasi_ternak(r["EBV"], r["Inbreeding_%"]), axis=1)
-    res_df["Breeding_Interpretation"] = res_df.apply(
-        lambda r: interpretasi_pemuliaan(r["EBV"], r["Inbreeding_%"], float(r["Inbreeding_Depression"]), r["Animal_ID"], res_df), 
-        axis=1
+    res_df["Classification"] = res_df.apply(
+        lambda r: klasifikasi_ternak(r["EBV"], r["Inbreeding_%"]),
+        axis=1,
     )
-    res_df["Inbreeding_%"] = res_df["Inbreeding_%"].apply(lambda x: round(float(x), 4))
+
+    res_df["Breeding_Interpretation"] = res_df.apply(
+        lambda r: interpretasi_pemuliaan(
+            r["EBV"],
+            r["Inbreeding_%"],
+            r["Animal_ID"],
+            res_df,
+        ),
+        axis=1,
+    )
+
     res_df["Inbreeding_Condition"] = res_df["Inbreeding_%"].apply(kondisi_inbreeding)
     res_df["Biological_Impact"] = res_df["Inbreeding_%"].apply(dampak_inbreeding)
     res_df["Recommendation"] = res_df["Inbreeding_%"].apply(rekomendasi)
 
-    # 6. Sire-Daughter Mating Detection (Backcross)
     res_df["Reproduction_Warning"] = ""
+
     for idx, row in res_df.iterrows():
         sire = row["Sire_ID"]
         dam = row["Dam_ID"]
+
         if sire and dam:
-            # Check if sire is the father of the mother (Inbreeding 25% or more)
-            grand_sire_of_dam, grand_dam_of_dam = parents_map.get(str(dam), (None, None))
+            grand_sire_of_dam, _ = parents_map.get(str(dam), (None, None))
             if str(sire) == str(grand_sire_of_dam):
                 res_df.at[idx, "Reproduction_Warning"] = "SIRE-DAUGHTER MATING DETECTED"
 
-    return clean_display(df_input), res_df, pd.DataFrame(A, index=order, columns=order)
+    matrix_df = pd.DataFrame(A, index=order, columns=order)
+
+    return clean_display(df_input), res_df, matrix_df
 
 
 def read_file(uploaded_file):
@@ -433,414 +485,810 @@ def read_file(uploaded_file):
     return pd.read_excel(uploaded_file, dtype=str, keep_default_na=False)
 
 
-def dot_escape(value): return str(value).replace("\\", "\\\\").replace('"', '\\"')
+def dot_escape(value):
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
 
 def make_dot(result_df, max_nodes=50):
-    # Limit visualization to first 50 nodes to avoid lag
     df = result_df.head(max_nodes)
     animal_set = set(df["Animal_ID"].astype(str))
-    dot = ["digraph Pedigree {", "rankdir=LR;", 'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];', "edge [arrowsize=0.6];"]
-    
+
+    dot = [
+        "digraph Pedigree {",
+        "rankdir=LR;",
+        'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10];',
+        "edge [arrowsize=0.6];",
+    ]
+
     for _, row in df.iterrows():
-        a = dot_escape(row["Animal_ID"])
-        f = float(row["Inbreeding_%"])
-        klasifikasi = row.get("Classification", "")
-        interpretasi = str(row.get("Breeding_Interpretation", ""))
-        
-        # Color & Border determination
+        animal = dot_escape(row["Animal_ID"])
+        f_value = float(row["Inbreeding_%"])
+        classification = row.get("Classification", "")
+
         fill = "#FFFFFF"
         border_color = "black"
         penwidth = "1.0"
-        label_suffix = ""
-        
-        if f >= 25:
-            fill = "#FFE4E1" # Pink (High Inbreeding)
-        elif f > 0:
-            fill = "#FFF4CC" # Yellow (Inbred)
-            
-        if klasifikasi == "Elite Stock":
-            border_color = "#FFD700" # Gold
+
+        if f_value >= 25:
+            fill = "#FFE4E1"
+        elif f_value > 0:
+            fill = "#FFF4CC"
+
+        if classification == "Elite Stock":
+            border_color = "#FFD700"
             penwidth = "3.0"
-            if "Core Female" in interpretasi:
-                label_suffix = "\\nELITE FEMALE"
-            else:
-                label_suffix = "\\nELITE MALE"
-        elif klasifikasi == "Breeding Stock":
-            border_color = "#32CD32" # Lime Green
+        elif classification == "Breeding Stock":
+            border_color = "#32CD32"
             penwidth = "2.0"
-            
-        dot.append(f'"{a}" [label="{a}\\nF={f:.2f}%{label_suffix}", fillcolor="{fill}", color="{border_color}", penwidth="{penwidth}"];')
-        
+        elif "Final Stock" in classification:
+            border_color = "#DC2626"
+            penwidth = "2.0"
+
+        label = f"{animal}\\nF={f_value:.2f}%\\n{classification}"
+
+        dot.append(
+            f'"{animal}" [label="{label}", fillcolor="{fill}", color="{border_color}", penwidth="{penwidth}"];'
+        )
+
     for _, row in df.iterrows():
-        a, s, d = dot_escape(row["Animal_ID"]), row["Sire_ID"], row["Dam_ID"]
-        if s and str(s) in animal_set: dot.append(f'"{dot_escape(s)}" -> "{a}" [label="sire"];')
-        if d and str(d) in animal_set: dot.append(f'"{dot_escape(d)}" -> "{a}" [label="dam"];')
+        animal = dot_escape(row["Animal_ID"])
+        sire = row["Sire_ID"]
+        dam = row["Dam_ID"]
+
+        if sire and str(sire) in animal_set:
+            dot.append(f'"{dot_escape(sire)}" -> "{animal}" [label="sire"];')
+
+        if dam and str(dam) in animal_set:
+            dot.append(f'"{dot_escape(dam)}" -> "{animal}" [label="dam"];')
+
     dot.append("}")
     return "\n".join(dot)
 
 
 def dots_to_pedigree(result_df, settings=None):
-    """Creates a quick text summary report (.txt) for field use."""
-    lines = ["LIVESTOCK BREEDING & INBREEDING SUMMARY", "="*50]
-    lines.append(f"Printed on: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(f"Developer : Galuh Adi Insani (Universitas Gadjah Mada)")
-    lines.append(f"Official App: https://inbreeding.streamlit.app/")
-    lines.append("="*50 + "\n")
+    lines = [
+        "LIVESTOCK BREEDING & INBREEDING SUMMARY",
+        "=" * 60,
+        f"Printed on: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}",
+        "=" * 60,
+        "",
+    ]
 
-    # 1. POPULATION SUMMARY
     avg_f = result_df["Inbreeding_%"].mean()
     avg_ebv = result_df["EBV"].mean()
+
     lines.append("1. POPULATION STATISTICS")
     lines.append(f"   Total Animals        : {len(result_df)}")
     lines.append(f"   Average Inbreeding F : {avg_f:.2f}%")
     lines.append(f"   Average EBV          : {avg_ebv:.4f}")
-    
+
     if "Phenotype" in result_df.columns:
-        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors='coerce').dropna()
+        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors="coerce").dropna()
+
         if not valid_phenos.empty:
             avg_p = valid_phenos.mean()
             sd_p = valid_phenos.std()
-            lines.append(f"   Average Phenotype    : {avg_p:.2f} +/- {sd_p:.2f}")
-            if settings and 'h2' in settings and 'intensity' in settings:
-                response = calculate_selection_response(settings['h2'], sd_p, settings['intensity'])
+            lines.append(f"   Average Phenotype    : {avg_p:.2f}")
+            lines.append(f"   Phenotype SD         : {sd_p:.2f}")
+
+            if settings and "h2" in settings and "intensity" in settings:
+                response = calculate_selection_response(settings["h2"], sd_p, settings["intensity"])
                 lines.append(f"   Selection Response R : {response:.4f}")
-    
+
     hwe_res = analyze_hardy_weinberg(result_df)
     lines.append(f"   HWE Genetic Status   : {hwe_res['status']}")
-    lines.append("-" * 50 + "\n")
+    lines.append("-" * 60)
+    lines.append("")
 
-    # 2. SELECTION CANDIDATES
     threshold_ebv = result_df["EBV"].quantile(0.75)
     selection_df = result_df[
-        (result_df["EBV"] >= threshold_ebv) & 
+        (result_df["EBV"] >= threshold_ebv) &
         (result_df["Inbreeding_%"] < 6.25)
     ].sort_values("EBV", ascending=False).head(10)
-    
-    lines.append("2. TOP 10 SELECTION CANDIDATES")
-    if not selection_df.empty:
-        lines.append(f"   {'Animal_ID':<15} {'EBV':<10} {'F (%)':<8} {'Classification':<20}")
-        for _, r in selection_df.iterrows():
-            lines.append(f"   {str(r['Animal_ID']):<15} {r['EBV']:<10.4f} {r['Inbreeding_%']:<8.2f} {str(r['Classification']):<20}")
-    else:
-        lines.append("   No candidates found.")
-    lines.append("-" * 50 + "\n")
 
-    # 3. PRIORITY CULLING
+    lines.append("2. TOP SELECTION CANDIDATES")
+    if not selection_df.empty:
+        lines.append(f"   {'Animal_ID':<15} {'EBV':<10} {'F (%)':<8} {'Classification':<25}")
+        for _, row in selection_df.iterrows():
+            lines.append(
+                f"   {str(row['Animal_ID']):<15} {row['EBV']:<10.4f} "
+                f"{row['Inbreeding_%']:<8.2f} {str(row['Classification']):<25}"
+            )
+    else:
+        lines.append("   No candidates met the selection criteria.")
+
+    lines.append("-" * 60)
+    lines.append("")
+
     threshold_low_ebv = result_df["EBV"].quantile(0.10)
     culling_df = result_df[
-        (result_df["Inbreeding_%"] >= 25) | 
+        (result_df["Inbreeding_%"] >= 25) |
         (result_df["Reproduction_Warning"] != "") |
         (result_df["EBV"] <= threshold_low_ebv)
     ].sort_values("Inbreeding_%", ascending=False).head(10)
 
-    lines.append("3. PRIORITY CULLING CANDIDATES (Top 10 High Risk)")
+    lines.append("3. PRIORITY CULLING CANDIDATES")
     if not culling_df.empty:
-        lines.append(f"   {'Animal_ID':<15} {'F (%)':<8} {'Warning':<25}")
-        for _, r in culling_df.iterrows():
-            warn = r['Reproduction_Warning'] if r['Reproduction_Warning'] else "Low Genetic/High F"
-            lines.append(f"   {str(r['Animal_ID']):<15} {r['Inbreeding_%']:<8.2f} {warn:<25}")
+        lines.append(f"   {'Animal_ID':<15} {'F (%)':<8} {'Warning':<35}")
+        for _, row in culling_df.iterrows():
+            warning = row["Reproduction_Warning"] if row["Reproduction_Warning"] else "Low genetic value or high F"
+            lines.append(
+                f"   {str(row['Animal_ID']):<15} {row['Inbreeding_%']:<8.2f} {warning:<35}"
+            )
     else:
-        lines.append("   No priority culling needed.")
-    lines.append("-" * 50 + "\n")
+        lines.append("   No high-priority culling candidates found.")
 
-    # 4. INDIVIDUAL DETAILS
+    lines.append("-" * 60)
+    lines.append("")
     lines.append("4. COMPLETE INDIVIDUAL LOG")
+
     for _, row in result_df.iterrows():
-        lines.append(f"   [{row['Animal_ID']}] F: {row['Inbreeding_%']:.2f}% | EBV: {row['EBV']:.4f} | {row['Classification']}")
-        if row['Reproduction_Warning']:
-            lines.append(f"   !!! WARNING: {row['Reproduction_Warning']}")
-    
-    lines.append("\n" + "="*50)
+        lines.append(
+            f"   [{row['Animal_ID']}] F: {row['Inbreeding_%']:.2f}% | "
+            f"EBV: {row['EBV']:.4f} | {row['Classification']}"
+        )
+        if row["Reproduction_Warning"]:
+            lines.append(f"   WARNING: {row['Reproduction_Warning']}")
+
+    lines.append("")
+    lines.append("=" * 60)
     lines.append("END OF REPORT")
+
     return "\n".join(lines)
 
 
 def generate_pdf(result_df, settings=None):
-    """Creates a professional PDF report with full breeding details."""
+    if not REPORTLAB_AVAILABLE:
+        return None
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
-    
-    # Custom Styles
-    title_style = styles['Heading1']
-    title_style.alignment = 1 
-    
     elements = []
+
+    title_style = styles["Heading1"]
+    title_style.alignment = 1
+
     elements.append(Paragraph("LIVESTOCK BREEDING ANALYSIS REPORT", title_style))
     elements.append(Spacer(1, 20))
-    
-    # --- SECTION 1: POPULATION SUMMARY ---
+
     avg_f = result_df["Inbreeding_%"].mean()
     avg_ebv = result_df["EBV"].mean()
-    elements.append(Paragraph(f"<b>1. Population Summary:</b>", styles['Heading2']))
-    
-    # Check for additional stats if selection parameters exist
-    avg_p = 0
-    sd_p = 0
-    response = 0
-    if "Phenotype" in result_df.columns:
-        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors='coerce').dropna()
-        if not valid_phenos.empty:
-            avg_p = valid_phenos.mean()
-            sd_p = valid_phenos.std()
-            if settings and 'h2' in settings and 'intensity' in settings:
-                response = calculate_selection_response(settings['h2'], sd_p, settings['intensity'])
+
+    elements.append(Paragraph("<b>1. Population Summary</b>", styles["Heading2"]))
 
     summary_data = [
         ["Total Population", f"{len(result_df)} animals"],
-        ["Average Inbreeding (F)", f"{avg_f:.2f}%"],
+        ["Average Inbreeding F", f"{avg_f:.2f}%"],
         ["Average EBV", f"{avg_ebv:.4f}"],
-        ["Analysis Time", pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')],
+        ["Analysis Time", pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")],
     ]
-    
-    if avg_p > 0:
-        summary_data.append(["Average Phenotype", f"{avg_p:.2f}"])
-        summary_data.append(["Standard Deviation (σp)", f"{sd_p:.2f}"])
-        if response > 0:
-            summary_data.append(["Selection Response (R)", f"{response:.4f}"])
 
-    st_table = Table(summary_data, colWidths=[180, 220])
-    st_table.setStyle(TableStyle([
-        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+    if "Phenotype" in result_df.columns:
+        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors="coerce").dropna()
+        if not valid_phenos.empty:
+            avg_p = valid_phenos.mean()
+            sd_p = valid_phenos.std()
+            summary_data.append(["Average Phenotype", f"{avg_p:.2f}"])
+            summary_data.append(["Phenotype SD", f"{sd_p:.2f}"])
+
+            if settings and "h2" in settings and "intensity" in settings:
+                response = calculate_selection_response(settings["h2"], sd_p, settings["intensity"])
+                summary_data.append(["Selection Response R", f"{response:.4f}"])
+
+    summary_table = Table(summary_data, colWidths=[180, 250])
+    summary_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
     ]))
-    elements.append(st_table)
+    elements.append(summary_table)
     elements.append(Spacer(1, 15))
 
-    # --- SECTION 2: SELECTION RESPONSE ESTIMATION ---
-    if response > 0:
-        elements.append(Paragraph("<b>2. Genetic Progress Estimation:</b>", styles['Heading2']))
-        interpretasi_txt = f"""
-        Based on heritability ({settings['h2']}) and selection intensity ({settings['intensity']}), 
-        the population is predicted to experience progress of <b>{response:.4f}</b> units in the next generation. 
-        Estimated average offspring performance is <b>{avg_p + response:.2f}</b> units.
-        """
-        elements.append(Paragraph(interpretasi_txt, styles['Normal']))
-        elements.append(Spacer(1, 15))
-
-    # --- SECTION 3: REGRESSION ANALYSIS (INBREEDING IMPACT) ---
-    stats = calculate_stats(result_df)
-    if stats:
-        elements.append(Paragraph("<b>3. Inbreeding vs Phenotype Relationship Analysis:</b>", styles['Heading2']))
-        reg_data = [
-            ["Parameter", "Value", "Interpretation"],
-            ["Correlation (r)", f"{stats['correlation']:.4f}", "Relationship strength"],
-            ["Regression (b)", f"{stats['b']:.4f}", "Reduction per 1% F"],
-            ["R-Squared", f"{stats['r_squared']:.4f}", "Model accuracy"]
-        ]
-        reg_table = Table(reg_data, colWidths=[100, 100, 200])
-        reg_table.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ]))
-        elements.append(reg_table)
-        elements.append(Paragraph(f"Every 1% increase in inbreeding is predicted to decrease performance by {abs(stats['b']):.4f} units.", styles['Italic']))
-        elements.append(Spacer(1, 15))
-    
-    # --- HWE SECTION (PDF) ---
     hwe_res = analyze_hardy_weinberg(result_df)
-    elements.append(Paragraph("<b>4. Hardy-Weinberg Equilibrium Analysis:</b>", styles['Heading2']))
-    elements.append(Paragraph(f"<b>Status: {hwe_res['status']}</b>", styles['Normal']))
-    elements.append(Paragraph(hwe_res['insight'], styles['Normal']))
-    elements.append(Paragraph("<b>Management Recommendations:</b>", styles['Normal']))
-    for s in hwe_res['saran']:
-        elements.append(Paragraph(f"• {s}", styles['Normal']))
+
+    elements.append(Paragraph("<b>2. Hardy-Weinberg Equilibrium Analysis</b>", styles["Heading2"]))
+    elements.append(Paragraph(f"<b>Status:</b> {hwe_res['status']}", styles["Normal"]))
+    elements.append(Paragraph(hwe_res["insight"], styles["Normal"]))
+    elements.append(Paragraph("<b>Recommendations:</b>", styles["Normal"]))
+
+    for item in hwe_res["saran"]:
+        elements.append(Paragraph(f"- {item}", styles["Normal"]))
+
     elements.append(Spacer(1, 15))
 
-    # --- SECTION 5: INDIVIDUAL DETAILS ---
-    elements.append(Paragraph("<b>5. Individual Details & Classification:</b>", styles['Heading2']))
-    
-    # Limit PDF table to first 1000 rows for performance
-    limit_pdf = result_df.head(1000)
-    data = [["Animal_ID", "F (%)", "EBV", "Classification"]]
-    
-    # Set up row styles (highlighter)
-    table_styles = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#2563eb")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
-    ]
+    elements.append(Paragraph("<b>3. Individual Details and Classification</b>", styles["Heading2"]))
 
-    for i, row in enumerate(limit_pdf.iterrows(), 1):
-        _, r = row
-        klasifikasi = str(r["Classification"])
-        data.append([
-            str(r["Animal_ID"]),
-            f"{r['Inbreeding_%']:.2f}",
-            f"{r['EBV']:.4f}",
-            klasifikasi
+    table_data = [["Animal_ID", "F (%)", "EBV", "Classification"]]
+    limit_df = result_df.head(1000)
+
+    for _, row in limit_df.iterrows():
+        table_data.append([
+            str(row["Animal_ID"]),
+            f"{row['Inbreeding_%']:.2f}",
+            f"{row['EBV']:.4f}",
+            str(row["Classification"]),
         ])
-        
-        # Add "highlighter" colors based on category
-        if "Elite Stock" in klasifikasi:
-            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.gold)) # Gold Yellow
-        elif "Breeding Stock" in klasifikasi:
-            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightgreen)) # Light Green
-        elif "Line Breeding" in klasifikasi:
-            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.orchid)) # Light Purple
-        elif "Final Stock" in klasifikasi:
-            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightsalmon)) # Light Orange (Coral)
-        elif "Commercial" in klasifikasi:
-            table_styles.append(('BACKGROUND', (3, i), (3, i), colors.lightblue)) # Light Blue
 
     if len(result_df) > 1000:
-        data.append(["...", "...", "...", "Other data truncated"])
-    
-    t = Table(data, repeatRows=1, colWidths=[100, 80, 80, 150])
-    t.setStyle(TableStyle(table_styles))
-    elements.append(t)
+        table_data.append(["...", "...", "...", "Data truncated"])
 
-    # --- SECTION 6: FULL PEDIGREE ---
-    elements.append(Spacer(1, 30))
-    elements.append(Paragraph("<b>6. Full Pedigree & Descendant Relationships:</b>", styles['Heading2']))
-    
-    # Use table for pedigree to be neater and cover more data
-    ped_data = [["Individual", "Sire", "Dam"]]
-    ped_styles = [
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#475569")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('FONTSIZE', (0, 0), (-1, -1), 8)
-    ]
+    detail_table = Table(table_data, repeatRows=1, colWidths=[110, 80, 80, 180])
+    detail_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ]))
 
-    # Take first 1000 individuals for pedigree in PDF
-    limit_ped = result_df.head(1000)
-    for _, row in limit_ped.iterrows():
-        sire = str(row['Sire_ID']) if not is_unknown(row['Sire_ID']) else "-"
-        dam = str(row['Dam_ID']) if not is_unknown(row['Dam_ID']) else "-"
-        ped_data.append([str(row['Animal_ID']), sire, dam])
-
-    if len(result_df) > 1000:
-        ped_data.append(["...", "...", "..."])
-
-    t_ped = Table(ped_data, repeatRows=1, colWidths=[130, 130, 130])
-    t_ped.setStyle(TableStyle(ped_styles))
-    elements.append(t_ped)
+    elements.append(detail_table)
     elements.append(Spacer(1, 15))
 
-    # --- SECTION 7: SELECTION & CULLING RECOMMENDATIONS ---
-    elements.append(Paragraph("<b>7. Selection & Culling Recommendations:</b>", styles['Heading2']))
-    
-    # 7.1 Selection Candidates (Top 25% EBV & F < 6.25%)
-    threshold_ebv = result_df["EBV"].quantile(0.75)
-    selection_df = result_df[
-        (result_df["EBV"] >= threshold_ebv) & 
-        (result_df["Inbreeding_%"] < 6.25)
-    ].sort_values("EBV", ascending=False).head(20) # Top 20 for PDF
-    
-    elements.append(Paragraph(f"<b>Top Selection Candidates (Count: {len(selection_df)}):</b>", styles['Heading3']))
-    if not selection_df.empty:
-        sel_data = [["Animal_ID", "EBV", "F (%)", "Status"]]
-        for _, r in selection_df.iterrows():
-            sel_data.append([str(r["Animal_ID"]), f"{r['EBV']:.4f}", f"{r['Inbreeding_%']:.2f}", str(r["Classification"])])
-        
-        t_sel = Table(sel_data, colWidths=[100, 80, 80, 130])
-        t_sel.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#16a34a")), # Green
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('FONTSIZE', (0, 0), (-1, -1), 8)
-        ]))
-        elements.append(t_sel)
-    else:
-        elements.append(Paragraph("No candidates meet the strict selection criteria.", styles['Normal']))
-    
-    elements.append(Spacer(1, 10))
-    
-    # 7.2 Culling Candidates (F >= 25% OR Backcross OR Bottom 10% EBV)
-    threshold_low_ebv = result_df["EBV"].quantile(0.10)
-    culling_df = result_df[
-        (result_df["Inbreeding_%"] >= 25) | 
-        (result_df["Reproduction_Warning"] != "") |
-        (result_df["EBV"] <= threshold_low_ebv)
-    ].sort_values("Inbreeding_%", ascending=False).head(20) # Top 20 for PDF
-    
-    elements.append(Paragraph(f"<b>Priority Culling Candidates (Count: {len(culling_df)}):</b>", styles['Heading3']))
-    if not culling_df.empty:
-        cul_data = [["Animal_ID", "F (%)", "Warning", "Reason"]]
-        for _, r in culling_df.iterrows():
-            reason = "Low Genetic" if r["EBV"] <= threshold_low_ebv else "High Inbreeding"
-            if r["Reproduction_Warning"]: reason = "Backcross"
-            cul_data.append([str(r["Animal_ID"]), f"{r['Inbreeding_%']:.2f}", str(r["Reproduction_Warning"]), reason])
-        
-        t_cul = Table(cul_data, colWidths=[100, 80, 110, 100])
-        t_cul.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#dc2626")), # Red
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('FONTSIZE', (0, 0), (-1, -1), 8)
-        ]))
-        elements.append(t_cul)
-    else:
-        elements.append(Paragraph("No high-priority culling candidates found.", styles['Normal']))
-    
-    elements.append(Spacer(1, 15))
+    elements.append(Paragraph("<b>4. Mating Strategy</b>", styles["Heading2"]))
+    elements.append(Paragraph(
+        "To maintain genetic progress while reducing inbreeding risk, use animals with high EBV and low kinship. "
+        "Avoid full-sibling, half-sibling, and parent-offspring mating. Use sire rotation and unrelated semen sources "
+        "when needed.",
+        styles["Normal"],
+    ))
 
-    # --- SECTION 8: MATING STRATEGY (INBREEDING PREVENTION) ---
-    elements.append(Paragraph("<b>8. Mating Strategy to Prevent Future Inbreeding:</b>", styles['Heading2']))
-    strategy_txt = """
-    To ensure genetic progress while maintaining healthy inbreeding levels in the next generation:
-    <br/><br/>
-    • <b>Lineage Crossing:</b> Pair selected individuals from unrelated families (check the Relationship Matrix).
-    <br/>
-    • <b>Avoid Kinship Mating:</b> Never mate full-siblings, half-siblings, or parent-offspring pairs.
-    <br/>
-    • <b>Popular Sire Management:</b> Limit the usage of a single 'Elite' sire to no more than 15-20% of the dam population.
-    <br/>
-    • <b>Outcrossing:</b> If no suitable unrelated elite sires are available, prioritize using external semen (AI) from tested, unrelated bulls.
-    <br/>
-    • <b>Replacement Strategy:</b> Retain female offspring from 'Elite' parents to replace older 'Commercial' dams.
-    """
-    elements.append(Paragraph(strategy_txt, styles['Normal']))
-    elements.append(Spacer(1, 20))
-
-    # Permanent URL link with more explicit format
-    link_url = "https://inbreeding.streamlit.app/"
-    elements.append(Paragraph(f'<b>Access Full Visualization:</b> <a href="{link_url}" color="blue"><u>{link_url}</u></a>', styles['Normal']))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("<i>Developed by: Galuh Adi Insani (Universitas Gadjah Mada)</i>", styles['Italic']))
-    
     doc.build(elements)
     buffer.seek(0)
     return buffer
 
 
-def main():
-    favicon_path = pathlib.Path(__file__).parent / "assets" / "favicon.svg"
-    st.set_page_config(
-        page_title="Breeding & Inbreeding Analytics",
-        page_icon=str(favicon_path),
-        layout="wide",
-        initial_sidebar_state="expanded"
+
+def detect_sex_role(animal_id: str, sire_role_ids: set, dam_role_ids: set) -> str:
+    """
+    Detects animal sex/role using pedigree role and common ID patterns.
+    Priority:
+    1. If the animal appears as Sire_ID, it is treated as Male/Sire.
+    2. If the animal appears as Dam_ID, it is treated as Female/Dam.
+    3. If role is not found, use common ID patterns.
+    """
+    animal_text = str(animal_id).strip()
+    animal_upper = animal_text.upper()
+
+    male_keywords = [
+        "SIRE", "BULL", "MALE", "PEJANTAN", "JANTAN",
+        "M_", "M-", "M.", "L_", "L-", "L."
+    ]
+
+    female_keywords = [
+        "DAM", "COW", "FEMALE", "INDUK", "BETINA",
+        "F_", "F-", "F.", "P_", "P-", "P."
+    ]
+
+    in_sire = animal_text in sire_role_ids
+    in_dam = animal_text in dam_role_ids
+
+    if in_sire and not in_dam:
+        return "Male / Sire Candidate"
+
+    if in_dam and not in_sire:
+        return "Female / Dam Candidate"
+
+    if in_sire and in_dam:
+        return "Parent Role - Check Sex"
+
+    if any(key in animal_upper for key in male_keywords):
+        return "Male / Sire Candidate"
+
+    if any(key in animal_upper for key in female_keywords):
+        return "Female / Dam Candidate"
+
+    return "Unidentified Sex"
+
+
+def add_sex_role_column(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds Sex_Role column to make male and female identification easier.
+    """
+    df = result_df.copy()
+
+    sire_role_ids = set(
+        df["Sire_ID"]
+        .dropna()
+        .astype(str)
+        .loc[lambda s: ~s.str.lower().isin(UNKNOWN_VALUES)]
     )
 
-    # CSS for Full Auto Dark Theme (Follows System/Streamlit)
+    dam_role_ids = set(
+        df["Dam_ID"]
+        .dropna()
+        .astype(str)
+        .loc[lambda s: ~s.str.lower().isin(UNKNOWN_VALUES)]
+    )
+
+    df["Sex_Role"] = df["Animal_ID"].astype(str).apply(
+        lambda x: detect_sex_role(x, sire_role_ids, dam_role_ids)
+    )
+
+    return df
+
+
+def infer_mating_candidates(result_df: pd.DataFrame):
+    """
+    Separates male/sire and female/dam candidates directly.
+    If a real Sex column is not available, the system infers sex/role from:
+    - whether the animal appears in Sire_ID or Dam_ID,
+    - ID patterns such as SIRE, BULL, DAM, COW, JANTAN, BETINA,
+    - EBV and inbreeding eligibility.
+    """
+    df = add_sex_role_column(result_df)
+
+    selectable = df[
+        (df["Inbreeding_%"] < 12.5) &
+        (~df["Classification"].astype(str).str.contains("Final Stock", case=False, na=False))
+    ].copy()
+
+    if selectable.empty:
+        selectable = df.copy()
+
+    # Prefer animals with positive EBV when available.
+    positive_selectable = selectable[selectable["EBV"] > 0].copy()
+    if not positive_selectable.empty:
+        selectable = positive_selectable
+
+    sires = selectable[
+        selectable["Sex_Role"].astype(str).str.contains("Male|Sire", case=False, na=False)
+    ].copy()
+
+    dams = selectable[
+        selectable["Sex_Role"].astype(str).str.contains("Female|Dam", case=False, na=False)
+    ].copy()
+
+    # Fallback if uploaded data has no clear role/sex information.
+    unidentified = selectable[
+        selectable["Sex_Role"].astype(str).str.contains("Unidentified|Check", case=False, na=False)
+    ].copy()
+
+    if sires.empty and not unidentified.empty:
+        sires = unidentified.sort_values(["EBV", "Inbreeding_%"], ascending=[False, True]).head(5).copy()
+        sires["Sex_Role"] = "Male / Sire Candidate - Assumed"
+
+    if dams.empty and not unidentified.empty:
+        dams = unidentified.sort_values(["EBV", "Inbreeding_%"], ascending=[False, True]).head(10).copy()
+        dams["Sex_Role"] = "Female / Dam Candidate - Assumed"
+
+    sires = sires.sort_values(["EBV", "Inbreeding_%"], ascending=[False, True])
+    dams = dams.sort_values(["EBV", "Inbreeding_%"], ascending=[False, True])
+
+    return sires, dams
+
+def simulate_mating_pairs(
+    result_df: pd.DataFrame,
+    matrix_df: pd.DataFrame,
+    h2_value: float,
+    depression_rate_value: float,
+    max_offspring_f: float = 6.25,
+    max_pairs: int = 20,
+) -> pd.DataFrame:
+    """
+    Simulates recommended mating pairs using the additive relationship matrix.
+
+    Predicted offspring inbreeding:
+    F_offspring = 0.5 * relationship(sire, dam) * 100
+
+    Expected offspring EBV:
+    EBV_offspring = 0.5 * (EBV_sire + EBV_dam)
+    """
+    sires, dams = infer_mating_candidates(result_df)
+
+    valid_phenotypes = pd.to_numeric(result_df.get("Phenotype", pd.Series(dtype=float)), errors="coerce").dropna()
+    population_avg = valid_phenotypes.mean() if not valid_phenotypes.empty else np.nan
+
+    simulations = []
+
+    for _, sire in sires.iterrows():
+        sire_id = str(sire["Animal_ID"])
+
+        for _, dam in dams.iterrows():
+            dam_id = str(dam["Animal_ID"])
+
+            if sire_id == dam_id:
+                continue
+
+            if sire_id not in matrix_df.index or dam_id not in matrix_df.columns:
+                continue
+
+            relationship = float(matrix_df.loc[sire_id, dam_id])
+            predicted_f = 0.5 * relationship * 100
+            expected_ebv = 0.5 * (float(sire["EBV"]) + float(dam["EBV"]))
+
+            sire_pheno = pd.to_numeric(sire.get("Phenotype", np.nan), errors="coerce")
+            dam_pheno = pd.to_numeric(dam.get("Phenotype", np.nan), errors="coerce")
+
+            if not pd.isna(sire_pheno) and not pd.isna(dam_pheno):
+                expected_phenotype_base = 0.5 * (float(sire_pheno) + float(dam_pheno))
+            elif not pd.isna(population_avg) and h2_value > 0:
+                expected_phenotype_base = population_avg + (expected_ebv / h2_value)
+            elif not pd.isna(population_avg):
+                expected_phenotype_base = population_avg
+            else:
+                expected_phenotype_base = np.nan
+
+            estimated_depression = calculate_inbreeding_depression(predicted_f, depression_rate_value)
+
+            if not pd.isna(expected_phenotype_base):
+                predicted_phenotype_after_depression = expected_phenotype_base - estimated_depression
+            else:
+                predicted_phenotype_after_depression = np.nan
+
+            if predicted_f <= 0:
+                risk_level = "Very Safe"
+            elif predicted_f < 6.25:
+                risk_level = "Recommended"
+            elif predicted_f < 12.5:
+                risk_level = "Use with Caution"
+            elif predicted_f < 25:
+                risk_level = "High Risk"
+            else:
+                risk_level = "Avoid"
+
+            if predicted_f <= max_offspring_f and expected_ebv > 0:
+                decision = "Recommended mating"
+            elif predicted_f <= max_offspring_f:
+                decision = "Genetically safe, but EBV is not strong"
+            elif predicted_f < 12.5 and expected_ebv > 0:
+                decision = "Possible, but monitor inbreeding"
+            else:
+                decision = "Not recommended"
+
+            simulations.append({
+                "Suggested_Sire": sire_id,
+                "Suggested_Dam": dam_id,
+                "Sire_EBV": round(float(sire["EBV"]), 4),
+                "Dam_EBV": round(float(dam["EBV"]), 4),
+                "Relationship_A": round(relationship, 4),
+                "Predicted_Offspring_F_%": round(predicted_f, 4),
+                "Expected_Offspring_EBV": round(expected_ebv, 4),
+                "Expected_Phenotype_Base": None if pd.isna(expected_phenotype_base) else round(float(expected_phenotype_base), 4),
+                "Estimated_Inbreeding_Depression": round(float(estimated_depression), 4),
+                "Predicted_Phenotype_After_Depression": None if pd.isna(predicted_phenotype_after_depression) else round(float(predicted_phenotype_after_depression), 4),
+                "Risk_Level": risk_level,
+                "Decision": decision,
+            })
+
+    if not simulations:
+        return pd.DataFrame()
+
+    sim_df = pd.DataFrame(simulations)
+
+    sim_df = sim_df.sort_values(
+        by=["Predicted_Offspring_F_%", "Expected_Offspring_EBV", "Relationship_A"],
+        ascending=[True, False, True],
+    )
+
+    return sim_df.head(max_pairs).reset_index(drop=True)
+
+
+
+def build_pair_pool_for_pure_lines(
+    result_df: pd.DataFrame,
+    matrix_df: pd.DataFrame,
+    h2_value: float,
+    depression_rate_value: float,
+    max_offspring_f: float,
+) -> pd.DataFrame:
+    """
+    Builds all possible safe sire-dam pairings for pure line foundation.
+    The safest pairs have low relationship, low predicted offspring F, and positive expected EBV.
+    """
+    sires, dams = infer_mating_candidates(result_df)
+
+    rows = []
+
+    valid_phenotypes = pd.to_numeric(result_df.get("Phenotype", pd.Series(dtype=float)), errors="coerce").dropna()
+    population_avg = valid_phenotypes.mean() if not valid_phenotypes.empty else np.nan
+
+    for _, sire in sires.iterrows():
+        sire_id = str(sire["Animal_ID"])
+
+        for _, dam in dams.iterrows():
+            dam_id = str(dam["Animal_ID"])
+
+            if sire_id == dam_id:
+                continue
+
+            if sire_id not in matrix_df.index or dam_id not in matrix_df.columns:
+                continue
+
+            relationship = float(matrix_df.loc[sire_id, dam_id])
+            predicted_f = 0.5 * relationship * 100
+            expected_ebv = 0.5 * (float(sire["EBV"]) + float(dam["EBV"]))
+
+            sire_pheno = pd.to_numeric(sire.get("Phenotype", np.nan), errors="coerce")
+            dam_pheno = pd.to_numeric(dam.get("Phenotype", np.nan), errors="coerce")
+
+            if not pd.isna(sire_pheno) and not pd.isna(dam_pheno):
+                expected_phenotype_base = 0.5 * (float(sire_pheno) + float(dam_pheno))
+            elif not pd.isna(population_avg) and h2_value > 0:
+                expected_phenotype_base = population_avg + (expected_ebv / h2_value)
+            elif not pd.isna(population_avg):
+                expected_phenotype_base = population_avg
+            else:
+                expected_phenotype_base = np.nan
+
+            estimated_depression = calculate_inbreeding_depression(predicted_f, depression_rate_value)
+
+            if not pd.isna(expected_phenotype_base):
+                predicted_after_depression = expected_phenotype_base - estimated_depression
+            else:
+                predicted_after_depression = np.nan
+
+            if predicted_f <= 0:
+                risk_level = "Very Safe"
+            elif predicted_f < 3.125:
+                risk_level = "Very Low Risk"
+            elif predicted_f <= max_offspring_f:
+                risk_level = "Safe"
+            elif predicted_f < 12.5:
+                risk_level = "Caution"
+            else:
+                risk_level = "Avoid"
+
+            safety_score = (
+                (max_offspring_f - predicted_f) * 2
+                + expected_ebv
+                - relationship
+            )
+
+            rows.append({
+                "Sire_ID": sire_id,
+                "Sire_Role": sire.get("Sex_Role", "Male / Sire Candidate"),
+                "Dam_ID": dam_id,
+                "Dam_Role": dam.get("Sex_Role", "Female / Dam Candidate"),
+                "Relationship_A": round(relationship, 4),
+                "Predicted_F_%": round(predicted_f, 4),
+                "Expected_EBV": round(expected_ebv, 4),
+                "Expected_Phenotype_Base": None if pd.isna(expected_phenotype_base) else round(float(expected_phenotype_base), 4),
+                "Estimated_Depression": round(float(estimated_depression), 4),
+                "Predicted_Phenotype_After_Depression": None if pd.isna(predicted_after_depression) else round(float(predicted_after_depression), 4),
+                "Risk_Level": risk_level,
+                "Safety_Score": round(float(safety_score), 4),
+            })
+
+    if not rows:
+        return pd.DataFrame()
+
+    pool = pd.DataFrame(rows)
+    pool = pool.sort_values(
+        ["Predicted_F_%", "Expected_EBV", "Safety_Score"],
+        ascending=[True, False, False],
+    ).reset_index(drop=True)
+
+    return pool
+
+
+def select_four_safe_pure_lines(
+    pair_pool: pd.DataFrame,
+    max_offspring_f: float,
+    required_lines: int = 4,
+) -> pd.DataFrame:
+    """
+    Selects four foundation lines while trying to avoid repeated sires and dams.
+    If the dataset is limited, the system will still provide the best available lines.
+    """
+    if pair_pool.empty:
+        return pd.DataFrame()
+
+    safe_pool = pair_pool[pair_pool["Predicted_F_%"] <= max_offspring_f].copy()
+
+    if safe_pool.empty:
+        safe_pool = pair_pool.copy()
+
+    selected = []
+    used_sires = set()
+    used_dams = set()
+
+    for _, row in safe_pool.iterrows():
+        sire = row["Sire_ID"]
+        dam = row["Dam_ID"]
+
+        if sire in used_sires or dam in used_dams:
+            continue
+
+        selected.append(row)
+        used_sires.add(sire)
+        used_dams.add(dam)
+
+        if len(selected) >= required_lines:
+            break
+
+    if len(selected) < required_lines:
+        for _, row in safe_pool.iterrows():
+            key = (row["Sire_ID"], row["Dam_ID"])
+            existing = {(r["Sire_ID"], r["Dam_ID"]) for r in selected}
+
+            if key in existing:
+                continue
+
+            selected.append(row)
+
+            if len(selected) >= required_lines:
+                break
+
+    if not selected:
+        return pd.DataFrame()
+
+    selected_df = pd.DataFrame(selected).reset_index(drop=True)
+    selected_df.insert(0, "Line", [f"Line {chr(65 + i)}" for i in range(len(selected_df))])
+
+    selected_df["GGPS_Male"] = selected_df["Sire_ID"]
+    selected_df["GGPS_Female"] = selected_df["Dam_ID"]
+    selected_df["GGPS_Expected_F_%"] = selected_df["Predicted_F_%"]
+    selected_df["GGPS_Expected_EBV"] = selected_df["Expected_EBV"]
+
+    return selected_df
+
+
+def simulate_stock_pyramid_from_lines(
+    selected_lines: pd.DataFrame,
+    max_offspring_f: float,
+) -> pd.DataFrame:
+    """
+    Simulates a 4-level breeding stock pyramid:
+    GGPS -> GPS -> PS -> FS.
+
+    Conservative assumption:
+    - GPS is produced from selected pure-line GGPS parents.
+    - PS is produced from controlled crossing among different lines.
+    - FS is final stock from commercial crossing between PS lines.
+
+    This simulation keeps FS as terminal stock and avoids using high-risk combinations.
+    """
+    if selected_lines.empty:
+        return pd.DataFrame()
+
+    lines = selected_lines.reset_index(drop=True).copy()
+    rows = []
+
+    # GGPS level: foundation pure line pair
+    for _, row in lines.iterrows():
+        rows.append({
+            "Stage": "GGPS",
+            "Line_System": row["Line"],
+            "Male_Source": row["GGPS_Male"],
+            "Female_Source": row["GGPS_Female"],
+            "Breeding_Model": "Pure line foundation",
+            "Predicted_Offspring_F_%": row["GGPS_Expected_F_%"],
+            "Expected_Offspring_EBV": row["GGPS_Expected_EBV"],
+            "Risk_Level": "Safe" if row["GGPS_Expected_F_%"] <= max_offspring_f else "Caution",
+            "Output": f"{row['Line']} GGPS replacement candidate",
+            "Use": "Maintain pure line nucleus",
+        })
+
+    # GPS level: multiplication within selected line, with conservative carry-over.
+    for _, row in lines.iterrows():
+        gps_f = min(float(row["GGPS_Expected_F_%"]) * 1.10, 100)
+        gps_ebv = float(row["GGPS_Expected_EBV"]) * 0.98
+
+        rows.append({
+            "Stage": "GPS",
+            "Line_System": row["Line"],
+            "Male_Source": f"{row['Line']} GGPS male line",
+            "Female_Source": f"{row['Line']} GGPS female line",
+            "Breeding_Model": "Pure line multiplication",
+            "Predicted_Offspring_F_%": round(gps_f, 4),
+            "Expected_Offspring_EBV": round(gps_ebv, 4),
+            "Risk_Level": "Safe" if gps_f <= max_offspring_f else "Caution",
+            "Output": f"{row['Line']} GPS candidate",
+            "Use": "Supply parent-stock line",
+        })
+
+    # PS level: cross different pure lines in a controlled way.
+    # Use four-line structure: A x B and C x D.
+    if len(lines) >= 2:
+        ps_pairs = []
+        if len(lines) >= 4:
+            ps_pairs = [(0, 1, "PS Male Line"), (2, 3, "PS Female Line")]
+        else:
+            ps_pairs = [(0, 1, "PS Composite Line")]
+
+        for i, j, label in ps_pairs:
+            left = lines.iloc[i]
+            right = lines.iloc[j]
+            ps_f = 0.5 * (float(left["GGPS_Expected_F_%"]) + float(right["GGPS_Expected_F_%"])) * 0.50
+            ps_ebv = 0.5 * (float(left["GGPS_Expected_EBV"]) + float(right["GGPS_Expected_EBV"]))
+
+            rows.append({
+                "Stage": "PS",
+                "Line_System": f"{left['Line']} × {right['Line']}",
+                "Male_Source": f"{left['Line']} GPS",
+                "Female_Source": f"{right['Line']} GPS",
+                "Breeding_Model": "Controlled inter-line cross",
+                "Predicted_Offspring_F_%": round(ps_f, 4),
+                "Expected_Offspring_EBV": round(ps_ebv, 4),
+                "Risk_Level": "Safe" if ps_f <= max_offspring_f else "Caution",
+                "Output": label,
+                "Use": "Produce parent stock for commercial crossing",
+            })
+
+    # FS level: terminal four-line commercial cross.
+    if len(lines) >= 4:
+        line_a = lines.iloc[0]
+        line_b = lines.iloc[1]
+        line_c = lines.iloc[2]
+        line_d = lines.iloc[3]
+
+        ps_male_ebv = 0.5 * (float(line_a["GGPS_Expected_EBV"]) + float(line_b["GGPS_Expected_EBV"]))
+        ps_female_ebv = 0.5 * (float(line_c["GGPS_Expected_EBV"]) + float(line_d["GGPS_Expected_EBV"]))
+        fs_ebv = 0.5 * (ps_male_ebv + ps_female_ebv)
+
+        ps_male_f = 0.5 * (float(line_a["GGPS_Expected_F_%"]) + float(line_b["GGPS_Expected_F_%"])) * 0.50
+        ps_female_f = 0.5 * (float(line_c["GGPS_Expected_F_%"]) + float(line_d["GGPS_Expected_F_%"])) * 0.50
+        fs_f = 0.5 * (ps_male_f + ps_female_f) * 0.50
+
+        rows.append({
+            "Stage": "FS",
+            "Line_System": "(Line A × Line B) × (Line C × Line D)",
+            "Male_Source": "PS Male Line from Line A × Line B",
+            "Female_Source": "PS Female Line from Line C × Line D",
+            "Breeding_Model": "Terminal four-line cross",
+            "Predicted_Offspring_F_%": round(fs_f, 4),
+            "Expected_Offspring_EBV": round(fs_ebv, 4),
+            "Risk_Level": "Safe" if fs_f <= max_offspring_f else "Caution",
+            "Output": "Final Stock / Commercial offspring",
+            "Use": "Commercial production only, not for breeding nucleus",
+        })
+
+    pyramid = pd.DataFrame(rows)
+    return pyramid
+
+
+def make_pure_line_flow_dot(pyramid_df: pd.DataFrame) -> str:
+    """
+    Creates a simple Graphviz flow for the GGPS-GPS-PS-FS structure.
+    """
+    dot = [
+        "digraph PureLinePyramid {",
+        "rankdir=TB;",
+        'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=10, fillcolor="#F8FAFC"];',
+        'edge [arrowsize=0.7];',
+        '"GGPS" [label="GGPS\\nGreat Grand Parent Stock\\nPure line nucleus", fillcolor="#DBEAFE"];',
+        '"GPS" [label="GPS\\nGrand Parent Stock\\nPure line multiplication", fillcolor="#DCFCE7"];',
+        '"PS" [label="PS\\nParent Stock\\nControlled inter-line cross", fillcolor="#FEF3C7"];',
+        '"FS" [label="FS\\nFinal Stock\\nTerminal commercial offspring", fillcolor="#FEE2E2"];',
+        '"GGPS" -> "GPS";',
+        '"GPS" -> "PS";',
+        '"PS" -> "FS";',
+    ]
+
+    if not pyramid_df.empty:
+        line_rows = pyramid_df[pyramid_df["Stage"] == "GGPS"]
+        for _, row in line_rows.iterrows():
+            line_name = str(row["Line_System"])
+            safe_line = dot_escape(line_name)
+            label = (
+                f"{line_name}\\nMale: {row['Male_Source']}\\nFemale: {row['Female_Source']}\\n"
+                f"F: {float(row['Predicted_Offspring_F_%']):.2f}%"
+            )
+            dot.append(
+                f'"{safe_line}" [label="{dot_escape(label)}", fillcolor="#FFFFFF"];'
+            )
+            dot.append(f'"{safe_line}" -> "GGPS";')
+
+    dot.append("}")
+    return "\n".join(dot)
+
+
+def apply_custom_css():
     st.markdown("""
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        
-        /* Base Variables (Forces Dark Mode as Default but respects system) */
+
         :root {
             --bg-main: #0f172a;
             --card-bg: #1e293b;
             --text-main: #f1f5f9;
             --text-sub: #94a3b8;
-            --accent-primary: #3b82f6; 
-            --accent-secondary: #0ea5e9;
+            --accent-primary: #3b82f6;
             --border-color: #334155;
-            --sidebar-bg: #1e293b;
-            --tab-bg: #334155;
-            --tab-text: #cbd5e1;
             --header-gradient: linear-gradient(90deg, #1e293b 0%, #334155 100%);
         }
 
-        /* Adaptive Theme based on Streamlit/System */
         @media (prefers-color-scheme: light) {
             :root {
                 --bg-main: #f1f5f9;
@@ -848,30 +1296,19 @@ def main():
                 --text-main: #1e293b;
                 --text-sub: #64748b;
                 --border-color: #e2e8f0;
-                --sidebar-bg: #ffffff;
-                --tab-bg: #e2e8f0;
-                --tab-text: #475569;
             }
         }
 
-        /* App Container */
-        .main { 
+        .main {
             background-color: var(--bg-main) !important;
             font-family: 'Inter', sans-serif;
             color: var(--text-main) !important;
         }
 
-        /* Global Text Color Overrides for Auto Dark */
-        .stMarkdown, p, span, label, .stMetric label, [data-testid="stMetricValue"], 
-        .stSelectbox label, .stSlider label {
-            color: var(--text-main) !important;
-        }
-        
-        h1, h2, h3, h4, h5, h6 {
+        h1, h2, h3, h4, h5, h6, p, span, label {
             color: var(--text-main) !important;
         }
 
-        /* Header Canvas remains dark/gradient for both modes for premium feel */
         .custom-header {
             background: var(--header-gradient);
             padding: 3rem 2rem;
@@ -881,20 +1318,11 @@ def main():
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
             text-align: center;
         }
+
         .custom-header * {
             color: white !important;
         }
-        
-        /* Metrics Styling */
-        div[data-testid="stMetric"] {
-            background: var(--card-bg) !important;
-            padding: 1.5rem;
-            border-radius: 1rem;
-            border: 1px solid var(--border-color) !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-        }
 
-        /* Cards & Info Boxes */
         .info-card {
             background: var(--card-bg) !important;
             color: var(--text-main) !important;
@@ -905,57 +1333,75 @@ def main():
             margin: 1rem 0;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-        
-        /* Sidebar Styling */
-        section[data-testid="stSidebar"] {
-            background-color: var(--sidebar-bg) !important;
-            border-right: 1px solid var(--border-color) !important;
+
+        div[data-testid="stMetric"] {
+            background: var(--card-bg) !important;
+            padding: 1.2rem;
+            border-radius: 1rem;
+            border: 1px solid var(--border-color) !important;
         }
 
-        /* Tabs Styling */
-        .stTabs [data-baseweb="tab"] {
-            background-color: var(--tab-bg) !important;
-            color: var(--tab-text) !important;
-            border-radius: 0.5rem 0.5rem 0 0;
-            margin-right: 4px;
-        }
-        .stTabs [aria-selected="true"] {
-            background-color: var(--accent-primary) !important;
-            color: white !important;
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid var(--border-color) !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Header Section
+
+def render_header():
     st.markdown("""
         <div class="custom-header">
-            <h1 style="color: white; font-weight: 800; font-size: 3rem; margin-bottom: 0;">GENETIC ANALYTICS</h1>
-            <p style="color: #cbd5e1; font-size: 1.2rem; font-weight: 400; letter-spacing: 0.05em;">
-                Decision Support System for Advanced Breeding Management
-                <br>Selection is easier, faster, and more accurate with inbreeding analysis, EBV, and pedigree insights.
+            <h1 style="font-weight: 800; font-size: 3rem; margin-bottom: 0;">
+                BREEDING & INBREEDING ANALYTICS
+            </h1>
+            <p style="font-size: 1.15rem; font-weight: 400; letter-spacing: 0.04em;">
+                A decision support system for livestock genetic evaluation based on pedigree records,
+                inbreeding coefficient, Estimated Breeding Value (EBV), heterosis, and genetic relationship analysis.
+                <br>
+                This application helps breeders, researchers, and farm managers identify superior breeding candidates,
+                avoid close-relative mating, reduce inbreeding risk, and design sustainable breeding strategies.
             </p>
         </div>
     """, unsafe_allow_html=True)
 
+
+def main():
+    favicon_path = pathlib.Path(__file__).parent / "assets" / "favicon.svg"
+
+    page_icon = str(favicon_path) if favicon_path.exists() else "🐄"
+
+    st.set_page_config(
+        page_title="Breeding & Inbreeding Analytics",
+        page_icon=page_icon,
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+    apply_custom_css()
+    render_header()
+
     with st.sidebar:
-        st.markdown('<div class="sidebar-header">CONFIGURATION</div>', unsafe_allow_html=True)
+        st.markdown("## Configuration")
+
         mode = st.radio(
             "Select Data Source",
             ["Full cattle example", "Upload own file"],
-            help="Use sample data to learn how it works or upload your own file."
+            help="Use sample data to learn how the system works or upload your own CSV/Excel file.",
         )
-        
-        st.info("""
-        **Data Format:**
-        Ensure the file has the following columns:
-        - `Animal_ID` (Cattle ID)
-        - `Sire_ID` (Sire ID)
-        - `Dam_ID` (Dam ID)
-        - `Optional:`
-            - `Phenotype` (Phenotype value for EBV calculation, e.g., milk yield, growth rate, etc.)
 
-        Use `-` for empty data.
-        """)
+        with st.expander("Required Data Format", expanded=False):
+            st.markdown("""
+            Please make sure your CSV or Excel file contains the following columns:
+
+            - `Animal_ID`: unique livestock identification code.
+            - `Sire_ID`: sire or father identification code.
+            - `Dam_ID`: dam or mother identification code.
+            - `Phenotype` *(optional)*: performance value for EBV calculation, such as body weight, milk yield, growth rate, or fertility score.
+
+            Use `-` if sire or dam information is unknown.
+
+            A more complete pedigree record will produce a more accurate inbreeding coefficient, relationship matrix, and breeding recommendation.
+            """)
 
         if mode == "Full cattle example":
             raw_df = contoh_sapi_lengkap()
@@ -964,513 +1410,961 @@ def main():
             if not uploaded:
                 st.warning("Please upload a CSV or Excel file to begin.")
                 st.stop()
+
             raw_df = read_file(uploaded)
 
-    # Optimization Warning for Large Data
-    if len(raw_df) > 500:
-        st.warning(f"Large Data Detected ({len(raw_df)} rows): Additive relationship matrix is being calculated using NumPy acceleration. Please wait a moment.")
+        if len(raw_df) > 500:
+            st.warning(
+                f"Large data detected ({len(raw_df)} rows). "
+                "The additive relationship matrix may take longer to calculate."
+            )
 
-    cols = list(raw_df.columns)
-    
-    with st.sidebar:
-        st.markdown("### Column Mapping Search")
+        cols = list(raw_df.columns)
+
+        st.markdown("### Column Mapping")
         id_col = st.selectbox("Animal_ID Column", cols, index=0)
-        sire_col = st.selectbox("Sire_ID Column", cols, index=1 if len(cols)>1 else 0)
-        dam_col = st.selectbox("Dam_ID Column", cols, index=2 if len(cols)>2 else 0)
-        
+        sire_col = st.selectbox("Sire_ID Column", cols, index=1 if len(cols) > 1 else 0)
+        dam_col = st.selectbox("Dam_ID Column", cols, index=2 if len(cols) > 2 else 0)
+
         phenotype_col = st.selectbox(
-            "Phenotype Column (Optional)", 
-            ["-"] + cols, 
+            "Phenotype Column - Optional",
+            ["-"] + cols,
             index=cols.index("Phenotype") + 1 if "Phenotype" in cols else 0,
-            help="Select phenotype column to calculate Breeding Value (EBV)."
+            help="Select a phenotype column to calculate Estimated Breeding Value.",
         )
+
         pheno_val = None if phenotype_col == "-" else phenotype_col
 
         st.markdown("### Genetic Parameters")
-        h2 = st.slider("Heritability ($h^2$)", 0.0, 1.0, 0.3, 0.05)
-        depression_rate = st.slider("Inbreeding Depression Rate (per 1% F)", 0.0, 5.0, 1.0, 0.1)
-        
+        h2 = st.slider("Heritability (h²)", 0.0, 1.0, 0.3, 0.05)
+        depression_rate = st.slider("Inbreeding Depression Rate per 1% F", 0.0, 5.0, 1.0, 0.1)
+
         st.markdown("### Selection Parameters")
         intensity = st.slider("Selection Intensity (i)", 0.0, 3.0, 1.5, 0.1)
 
     try:
         internal = standardize_input(raw_df, id_col, sire_col, dam_col, pheno_val)
-        std_df, res_df, matrix_df = calculate(internal, h2=h2, depression_rate=depression_rate)
-        
-        res_display_data = res_df[res_df["Data_Type"] == "Input data"]
-        
-        # Define tabs
-        tabs = st.tabs(["Results & Analysis", "Genetic Visualization", "Pedigree Chart", "Relationship Matrix (A)", "Heterosis & Crossbreeding"])
+        std_df, res_df, matrix_df = calculate(
+            internal,
+            h2=h2,
+            depression_rate=depression_rate,
+        )
+
+        res_display_data = res_df[res_df["Data_Type"] == "Input data"].copy()
+        res_display_data = add_sex_role_column(res_display_data)
+
+        tabs = st.tabs([
+            "Results & Analysis",
+            "Genetic Visualization",
+            "Pedigree Chart",
+            "Relationship Matrix",
+            "Heterosis & Crossbreeding",
+            "Pure Line Pyramid",
+        ])
 
         with tabs[0]:
             st.subheader("Data Summary")
-            
-            # Metrics
+
+            total_animals = len(res_display_data)
+            inbred_animals = len(res_display_data[res_display_data["Inbreeding_%"] > 0])
+            avg_f = float(res_display_data["Inbreeding_%"].mean()) if total_animals else 0
+            max_f = float(res_display_data["Inbreeding_%"].max()) if total_animals else 0
+            avg_ebv = float(res_display_data["EBV"].mean()) if total_animals else 0
+
             m0, m1, m2, m3, m4 = st.columns(5)
-            total_sapi = len(res_display_data)
-            inbred_sapi = len(res_display_data[res_display_data["Inbreeding_%"] > 0])
-            avg_f = float(res_display_data["Inbreeding_%"].mean())
-            max_f = float(res_display_data["Inbreeding_%"].max())
-            
-            m0.metric("Heritability ($h^2$)", f"{h2:.2f}")
-            m1.metric("Total Population", f"{total_sapi} heads")
-            m2.metric("Inbred Livestock", f"{inbred_sapi} heads")
+            m0.metric("Heritability h²", f"{h2:.2f}")
+            m1.metric("Total Population", f"{total_animals}")
+            m2.metric("Inbred Animals", f"{inbred_animals}")
             m3.metric("Average F", f"{avg_f:.2f}%")
-            m4.metric("Highest F", f"{max_f:.2f}%")
+            m4.metric("Average EBV", f"{avg_ebv:.4f}")
 
-            # Classification Summary
             st.markdown("### Livestock Classification Distribution")
-            dist = res_display_data["Classification"].value_counts()
-            
-            # Check for Elite Stock
-            has_elite_male = any("Core Sire" in str(x) for x in res_display_data["Breeding_Interpretation"])
-            has_elite_female = any("Core Female" in str(x) for x in res_display_data["Breeding_Interpretation"])
-            has_elite = has_elite_male or has_elite_female
-            
-            c_dist = st.columns(len(dist))
-            for i, (label, count) in enumerate(dist.items()):
-                # Show gender details if label is Elite Stock
-                display_label = label
-                if label == "Elite Stock":
-                    m_count = sum("Core Sire" in str(x) for x in res_display_data["Breeding_Interpretation"])
-                    f_count = sum("Core Female" in str(x) for x in res_display_data["Breeding_Interpretation"])
-                    display_label = f"Elite (M:{m_count}, F:{f_count})"
-                c_dist[i].metric(display_label, f"{count} heads")
 
-            # Advice if no Elite Stock
-            if not has_elite:
-                st.warning("Warning: No Elite Stock found in this population.")
-                with st.container():
+            if not res_display_data.empty:
+                dist = res_display_data["Classification"].value_counts()
+                dist_cols = st.columns(max(len(dist), 1))
+
+                for i, (label, count) in enumerate(dist.items()):
+                    dist_cols[i].metric(label, f"{count}")
+
+                has_elite = any(res_display_data["Classification"] == "Elite Stock")
+
+                if not has_elite:
+                    st.warning("Warning: No Elite Stock was found in this population.")
                     st.markdown("""
                     <div class="info-card">
-                    <b>Genetic Improvement Advice:</b><br/>
-                    Since the current population has no individuals with 'Elite' genetic potential (high EBV & low Inbreeding), the following steps are suggested:
+                    <b>Genetic Improvement Advice:</b><br>
+                    The current population does not contain animals classified as <b>Elite Stock</b>, meaning no individual currently meets the ideal combination of high EBV and low inbreeding level.
+                    To improve the genetic quality of the next generation, the following actions are recommended:
                     <ol>
-                        <li><b>Outcrossing:</b> Introduce sires from outside (or frozen semen) that have proven breeding values but no kinship relationship with current dams.</li>
-                        <li><b>Strict Selection:</b> Use the best <b>'Breeding Stock'</b> animals as replacement dams and avoid using 'Commercial' animals as parents.</li>
-                        <li><b>Re-evaluation:</b> Ensure phenotype data is accurate. EBV values are highly dependent on weight/production recording accuracy.</li>
-                        <li><b>Inbreeding Management:</b> Focus on reducing inbreeding coefficients below 3% to open opportunities for Elite individuals to emerge in future generations.</li>
+                        <li><b>Outcrossing:</b> Introduce unrelated sires or frozen semen from outside the current population.</li>
+                        <li><b>Strict Selection:</b> Prioritize animals classified as <b>Breeding Stock</b> as replacement parents.</li>
+                        <li><b>Phenotype Re-evaluation:</b> Ensure performance data are recorded accurately because EBV depends strongly on phenotype quality.</li>
+                        <li><b>Inbreeding Control:</b> Keep the inbreeding coefficient below 3% whenever possible.</li>
+                        <li><b>Sire Rotation:</b> Avoid using one sire too frequently across the population.</li>
                     </ol>
                     </div>
                     """, unsafe_allow_html=True)
 
-            # Selection Response
             if pheno_val:
                 st.markdown("---")
                 st.subheader("Selection Response Estimation")
 
-                # Filter valid phenotypes for SD calculation
-                valid_phenos = pd.to_numeric(res_display_data["Phenotype"], errors='coerce').dropna()
+                valid_phenos = pd.to_numeric(res_display_data["Phenotype"], errors="coerce").dropna()
+
                 if not valid_phenos.empty:
-                    sd_p = valid_phenos.std()
                     avg_p = valid_phenos.mean()
+                    sd_p = valid_phenos.std()
                     response = calculate_selection_response(h2, sd_p, intensity)
-                    
-                    # New neater layout
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("Average Phenotype", f"{avg_p:.2f}")
-                    m2.metric("Standard Deviation (σp)", f"{sd_p:.2f}")
-                    m3.metric("Selection Response (R)", f"{response:.4f}")
-                    
-                    # Average Heterosis
-                    valid_heterosis = res_display_data[res_display_data["Heterosis"] != 0]["Heterosis"]
+
+                    valid_heterosis = pd.to_numeric(
+                        res_display_data["Heterosis"],
+                        errors="coerce",
+                    )
+                    valid_heterosis = valid_heterosis[valid_heterosis != 0]
                     avg_h = valid_heterosis.mean() if not valid_heterosis.empty else 0.0
-                    m4.metric("Average Heterosis", f"{avg_h:.4f}")
-                    
-                    # Interpretation explanation
+
+                    r1, r2, r3, r4 = st.columns(4)
+                    r1.metric("Average Phenotype", f"{avg_p:.2f}")
+                    r2.metric("Phenotype SD", f"{sd_p:.2f}")
+                    r3.metric("Selection Response R", f"{response:.4f}")
+                    r4.metric("Average Heterosis", f"{avg_h:.4f}")
+
                     st.info(f"""
-                    **Result Interpretation:**
-                    *   **Population Average:** Currently is **{avg_p:.2f}** units.
-                    *   **Genetic Progress:** With selection intensity **{intensity}** and heritability **{h2}**, a progress of **{response:.4f}** units is predicted in the next generation. Higher selection intensity (more aggressive) will increase selection response, but can also increase inbreeding risk if not well-managed. Moderate selection intensity (around 1.5) is often considered an optimal point for balance between genetic progress and inbreeding management.
-                    *   **Role of Heterosis:** An average heterosis of **{avg_h:.4f}** units indicates that some individuals may have performance superiority due to better genetic combinations from both parents, especially if crossbreeding occurs. Heterosis can provide an additional boost to offspring performance beyond what is predicted by EBV alone.
-                    *   **Next Generation Estimation:** Average offspring performance is expected to be **{avg_p + response:.2f}** units. However, this is an average prediction and actual results may vary depending on environmental factors, management, and other genetic interactions. Therefore, it is important to continue monitoring actual offspring performance and adjust breeding strategies as needed.
-                    *   **Important Note:** Selection response is a prediction based on current data. External factors such as management changes, disease, or environmental conditions can affect actual results in the field. Always use latest data for recalculation and periodic evaluation of your breeding strategy.
-                    *   **Recommendation:** To maximize selection response, focus on choosing individuals with high EBV and low inbreeding as parents, and consider using semen from outside sires to increase genetic variation and reduce inbreeding risk.
-                    *   **Warning:** Avoid overly aggressive selection on individuals with high inbreeding, as this can increase inbreeding depression risk and lower overall offspring performance.
-                    *   **Management Advice:** Consider performing periodic sire rotations and using crossbreeding strategies if needed to maintain the genetic health of your population.
-                    *   **Conclusion:** With a good understanding of selection response and inbreeding management, you can make smarter breeding decisions to improve your livestock performance sustainably.
+                    **Result Interpretation**
+
+                    - **Current Population Average:** The average phenotype value is **{avg_p:.2f}** units.
+                    - **Predicted Genetic Progress:** With heritability **{h2}** and selection intensity **{intensity}**, the expected improvement in the next generation is **{response:.4f}** units.
+                    - **Next Generation Estimate:** The predicted average performance of offspring is approximately **{avg_p + response:.2f}** units.
+                    - **Average Heterosis:** The average heterosis value is **{avg_h:.4f}** units.
+
+                    **Scientific Meaning**
+
+                    Selection response estimates how much improvement can be expected after choosing the best animals as parents. Higher selection intensity may increase genetic progress, but it can also increase inbreeding risk if only a few related animals are repeatedly used.
+
+                    **Breeding Recommendation**
+
+                    Use animals with high EBV and low inbreeding as parent candidates. Avoid selecting animals with high EBV if they also have high inbreeding coefficients.
                     """)
-                    
-                    # Backcross/Sire-Daughter Alert Section
-                    backcross_cases = res_display_data[res_display_data["Reproduction_Warning"] != ""]
-                    if not backcross_cases.empty:
-                        st.markdown("---")
-                        st.error(f"Detected {len(backcross_cases)} Sire-Daughter Mating Cases (Backcross)")
-                        
-                        cols_back = st.columns(2)
-                        with cols_back[0]:
-                            st.write("**List of Exposed Individuals:**")
-                            st.dataframe(backcross_cases[["Animal_ID", "Sire_ID", "Dam_ID", "Inbreeding_%"]], hide_index=True)
-                        
-                        with cols_back[1]:
-                            st.markdown("""
-                            <div class="info-card" style="border-left: 4px solid #ef4444;">
-                            <b>Reproduction Management & AI Insight:</b><br/>
-                            Mating a sire with its biological daughter results in a minimum inbreeding coefficient (F) of <b>25%</b>.
-                            <ul>
-                                <li><b>Main Risk:</b> Drastic vitality reduction, high birth defect risk, and inbreeding depression on growth/milk performance.</li>
-                                <li><b>Artificial Insemination (AI) Strategy:</b>
-                                    <ul>
-                                        <li><b>Semen Database:</b> Inseminator MUST check livestock cards. Do not use semen codes from the same sire as the father of that female.</li>
-                                        <li><b>Straw Rotation:</b> Use straws from different <i>lineage</i> sires or other breeds (Crossbreeding) if needed to break the inbreeding chain.</li>
-                                    </ul>
-                                </li>
-                                <li><b>Culling:</b> Backcross offspring should be used as <b>Final Stock</b> (slaughter) and not selected as replacement stock.</li>
-                            </ul>
-                            </div>
-                            """, unsafe_allow_html=True)
 
-                    # Inbreeding vs Phenotype Relationship (Correlation & Regression)
-                    st.markdown("---")
-                    st.subheader("Inbreeding vs Phenotype Relationship Analysis")
-                    stats = calculate_stats(res_display_data)
-                    
-                    if stats:
-                        c_stat1, c_stat2, c_stat3 = st.columns(3)
-                        with c_stat1:
-                            st.metric("Correlation (r)", f"{stats['correlation']:.4f}")
-                            st.caption("Relationship between inbreeding level and performance.")
-                        with c_stat2:
-                            st.metric("Regression (b)", f"{stats['b']:.4f}")
-                            st.caption("Phenotype unit reduction per 1% increase in inbreeding.")
-                        with c_stat3:
-                            st.metric("Coefficient of Determination ($R^2$)", f"{stats['r_squared']:.4f}")
-                            st.caption("Proportion of phenotype variation influenced by inbreeding.")
-                        
-                        st.info(f"**Static Interpretation:** Regression equation: $Y = {stats['a']:.2f} + ({stats['b']:.4f}) X$. "
-                                f"Meaning, every 1% increase in inbreeding is predicted to decrease phenotype by {abs(stats['b']):.4f} units.")
-                    
-                    # --- HARDY-WEINBERG ANALYSIS ---
-                    st.markdown("---")
-                    st.subheader("Hardy-Weinberg Equilibrium (HWE) Analysis")
-                    hwe_res = analyze_hardy_weinberg(res_display_data)
-                    
-                    hw_col1, hw_col2 = st.columns([0.4, 0.6])
-                    with hw_col1:
-                        st.write(f"#### Status: {hwe_res['status']}")
-                        st.write(hwe_res['insight'])
-                    
-                    with hw_col2:
-                        st.write("**Strategy Recommendation:**")
-                        for s in hwe_res['saran']:
-                            st.write(f"- {s}")
-                    
-                    if hwe_res['is_deviating']:
-                        st.warning("Population shows significant indications of non-random mating (accumulated inbreeding).")
-                    else:
-                        st.success("Population is still in a healthy genetic distribution track.")
                 else:
-                    st.warning("Invalid phenotype data for SD calculation.")
+                    st.warning("Phenotype data is invalid or empty, so selection response cannot be calculated.")
 
-            st.markdown("### Calculation Results Table")
-            # Use st.dataframe with fixed height for virtualized scrolling
-            st.dataframe(clean_display(res_display_data), use_container_width=True, height=500)
-            
-            # Detailed Interpretation for Selected Animal
+            backcross_cases = res_display_data[res_display_data["Reproduction_Warning"] != ""]
+
+            if not backcross_cases.empty:
+                st.markdown("---")
+                st.error(f"Detected {len(backcross_cases)} sire-daughter mating case(s) or backcross risk.")
+
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    st.write("**List of Exposed Individuals:**")
+                    st.dataframe(
+                        backcross_cases[["Animal_ID", "Sire_ID", "Dam_ID", "Inbreeding_%"]],
+                        hide_index=True,
+                    )
+
+                with c2:
+                    st.markdown("""
+                    <div class="info-card" style="border-left: 4px solid #ef4444;">
+                    <b>Reproductive Risk Explanation:</b><br>
+                    Mating a sire with its own daughter is a high-risk form of close inbreeding and may produce an inbreeding coefficient of approximately <b>25%</b> or higher.
+                    <ul>
+                        <li><b>Main Risks:</b> reduced fertility, weak immunity, slow growth, birth defects, and low offspring survival.</li>
+                        <li><b>AI Strategy:</b> always check livestock records before selecting semen.</li>
+                        <li><b>Semen Rotation:</b> use semen from unrelated sires or different genetic lines.</li>
+                        <li><b>Management Decision:</b> offspring from close-relative mating should not be prioritized as replacement breeding stock.</li>
+                    </ul>
+                    </div>
+                    """, unsafe_allow_html=True)
+
             st.markdown("---")
-            col_sel1, col_sel2 = st.columns([0.4, 0.6])
-            with col_sel1:
-                st.subheader(" Individual Interpretation")
-                selected_animal = st.selectbox("Select Cattle:", res_display_data["Animal_ID"])
-            
+            st.subheader("Inbreeding vs Phenotype Relationship Analysis")
+
+            stats = calculate_stats(res_display_data)
+
+            if stats:
+                s1, s2, s3 = st.columns(3)
+
+                s1.metric("Correlation r", f"{stats['correlation']:.4f}")
+                s2.metric("Regression b", f"{stats['b']:.4f}")
+                s3.metric("R-squared", f"{stats['r_squared']:.4f}")
+
+                st.info(
+                    f"**Regression Interpretation:** The estimated regression equation is "
+                    f"Y = {stats['a']:.2f} + ({stats['b']:.4f})X. "
+                    f"This means every 1% increase in inbreeding is predicted to change the phenotype value by "
+                    f"{stats['b']:.4f} units. A negative value indicates possible performance decline as inbreeding increases."
+                )
+            else:
+                st.info("Regression analysis requires at least three valid phenotype records.")
+
+            st.markdown("---")
+            st.subheader("Hardy-Weinberg Equilibrium Analysis")
+
+            hwe_res = analyze_hardy_weinberg(res_display_data)
+
+            hw1, hw2 = st.columns([0.4, 0.6])
+
+            with hw1:
+                st.write(f"#### Status: {hwe_res['status']}")
+                st.write(hwe_res["insight"])
+                st.caption(
+                    "HWE analysis indicates whether the population is close to random mating or already shows signs of accumulated inbreeding."
+                )
+
+            with hw2:
+                st.write("**Management Strategy Recommendation:**")
+                for item in hwe_res["saran"]:
+                    st.write(f"- {item}")
+
+            if hwe_res["is_deviating"]:
+                st.warning(
+                    "The population shows signs of deviation from random mating. This may indicate accumulated inbreeding or repeated use of related animals."
+                )
+            else:
+                st.success(
+                    "The population is relatively close to a healthy genetic distribution. Continue pedigree monitoring."
+                )
+
+            st.markdown("---")
+            st.markdown("### Complete Calculation Results")
+            st.caption(
+                "This table summarizes sex/role identification, pedigree information, EBV, heterosis, inbreeding coefficient, biological impact, classification, and recommendation."
+            )
+            st.info(
+                "Sex/Role is automatically identified from pedigree usage. Animals appearing as `Sire_ID` are labeled as male/sire candidates, while animals appearing as `Dam_ID` are labeled as female/dam candidates. If the system cannot detect it, the animal will be labeled as unidentified."
+            )
+
+            st.dataframe(clean_display(res_display_data), use_container_width=True, height=500)
+
+            st.markdown("---")
+            csel1, csel2 = st.columns([0.4, 0.6])
+
+            with csel1:
+                st.subheader("Individual Genetic Interpretation")
+                selected_animal = st.selectbox("Select Animal:", res_display_data["Animal_ID"])
+
             if selected_animal:
                 row = res_display_data[res_display_data["Animal_ID"] == selected_animal].iloc[0]
-                with col_sel2:
-                    st.info(f"**Individual:** {row['Animal_ID']}\n\n{row['Breeding_Interpretation']}")
+
+                with csel2:
+                    st.info(f"**Selected Animal:** {row['Animal_ID']}\n\n{row['Breeding_Interpretation']}")
                     st.markdown(f"""
-                    - **Inbreeding:** {row['Inbreeding_%']}% ({row['Inbreeding_Condition']})
-                    - **Performance Impact:** {row['Inbreeding_Depression']} units.
+                    - **Inbreeding Coefficient:** {row['Inbreeding_%']}% ({row['Inbreeding_Condition']})
+                    - **Estimated Performance Impact:** -{row['Inbreeding_Depression']} units
                     - **Biological Impact:** {row['Biological_Impact']}
+                    - **Recommendation:** {row['Recommendation']}
                     """)
-            
-            # Additional Information based on Max F
+
             st.markdown("### Interpretation Guide")
-            with st.expander("Click to understand breeding terms"):
+
+            with st.expander("Click to understand the main breeding analysis terms"):
                 st.markdown("""
-                - **Inbreeding Coefficient (F):** Percentage of genetic similarity due to related parents.
-                - **EBV (Estimated Breeding Value):** Value indicating genetic potential that will be passed to offspring. The higher (positive), the better.
-                - **Inbreeding Depression:** Estimated performance reduction experienced by individuals due to high inbreeding.
-                - **Selection Response (R):** Prediction of population quality progress in next generation if selection is performed.
+                **1. Inbreeding Coefficient (F)**  
+                Measures the probability that an animal inherits identical genes from both parents due to common ancestry.
+
+                **2. Estimated Breeding Value (EBV)**  
+                Estimates the genetic potential of an animal that can be passed to its offspring.
+
+                **3. Inbreeding Depression**  
+                The potential reduction in performance caused by increased homozygosity.
+
+                **4. Heterosis**  
+                The performance advantage of offspring compared with the average of both parents.
+
+                **5. Selection Response (R)**  
+                The expected improvement in the next generation after selecting superior parents.
+
+                **6. Relationship Matrix (A)**  
+                A matrix showing genetic relationship values between individuals. Lower values are preferred for mating pairs.
                 """)
-            
+
             st.markdown("### Population Impact Analysis")
             st.info(dampak_inbreeding(max_f))
-            
-            # Download options
-            st.markdown("### Download Report")
-            c1, c2, c3 = st.columns(3)
-            csv = clean_display(res_df).to_csv(index=False).encode('utf-8')
-            c1.download_button(" CSV (Full Data)", csv, "analytics_data.csv", "text/csv", use_container_width=True)
-            
-            # PDF Report
-            current_settings = {
-                'h2': h2,
-                'intensity': intensity
-            }
-            pdf_data = generate_pdf(res_display_data, settings=current_settings)
-            c2.download_button(" PDF (Official Report)", pdf_data, "Breeding_Report.pdf", "application/pdf", use_container_width=True)
-            
-            # Simple Text Report
-            txt_report = dots_to_pedigree(res_display_data)
-            c3.download_button(" TXT (Quick Summary)", txt_report.encode('utf-8'), "summary.txt", "text/plain", use_container_width=True)
 
-            # --- SELECTION & CULLING SECTION ---
+            st.markdown("### Download Report")
+            dl1, dl2, dl3, dl4 = st.columns(4)
+
+            csv_data = clean_display(res_df).to_csv(index=False).encode("utf-8")
+            dl1.download_button(
+                "Download CSV",
+                csv_data,
+                "breeding_analytics_data.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+            matrix_csv = matrix_df.to_csv().encode("utf-8")
+            dl2.download_button(
+                "Download Matrix CSV",
+                matrix_csv,
+                "relationship_matrix.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+            current_settings = {"h2": h2, "intensity": intensity}
+            txt_report = dots_to_pedigree(res_display_data, settings=current_settings)
+            dl3.download_button(
+                "Download TXT Summary",
+                txt_report.encode("utf-8"),
+                "breeding_summary.txt",
+                "text/plain",
+                use_container_width=True,
+            )
+
+            pdf_data = generate_pdf(res_display_data, settings=current_settings)
+
+            if pdf_data:
+                dl4.download_button(
+                    "Download PDF Report",
+                    pdf_data,
+                    "breeding_report.pdf",
+                    "application/pdf",
+                    use_container_width=True,
+                )
+            else:
+                dl4.info("Install reportlab to enable PDF download.")
+
             st.markdown("---")
             st.subheader("Selection & Culling Recommendations")
-            
-            # Selection Criteria: Top 25% EBV & Low Inbreeding
+
+            st.markdown("""
+            This section identifies animals that should be prioritized as parent candidates and animals that should not be used for future breeding.
+
+            **Selection Candidates** are animals with relatively high EBV and low inbreeding risk.  
+            **Culling Candidates** are animals with very high inbreeding, close-relative mating warnings, or low genetic potential.
+            """)
+
             threshold_ebv = res_display_data["EBV"].quantile(0.75)
-            seleksi_df = res_display_data[
-                (res_display_data["EBV"] >= threshold_ebv) & 
+            selection_df = res_display_data[
+                (res_display_data["EBV"] >= threshold_ebv) &
                 (res_display_data["Inbreeding_%"] < 6.25)
             ].sort_values("EBV", ascending=False)
-            
-            # Culling Criteria: Very High Inbreeding OR Sire-Daughter Mating OR very low EBV (Bottom 10%)
+
             threshold_low_ebv = res_display_data["EBV"].quantile(0.10)
             culling_df = res_display_data[
-                (res_display_data["Inbreeding_%"] >= 25) | 
+                (res_display_data["Inbreeding_%"] >= 25) |
                 (res_display_data["Reproduction_Warning"] != "") |
                 (res_display_data["EBV"] <= threshold_low_ebv)
             ].sort_values("Inbreeding_%", ascending=False)
-            
-            col_sel_recom, col_cul_recom = st.columns(2)
-            
-            with col_sel_recom:
-                st.success(f"**Selection Candidates (Next Gen Parents): {len(seleksi_df)} heads**")
-                st.write("Priority based on high EBV and low inbreeding risk.")
-                st.dataframe(seleksi_df[["Animal_ID", "EBV", "Inbreeding_%", "Classification"]], hide_index=True)
-                
-            with col_cul_recom:
-                st.error(f"**Culling Candidates (Slaughter/Out): {len(culling_df)} heads**")
-                st.write("Based on extreme inbreeding, backcross cases, or very low genetic potential.")
-                st.dataframe(culling_df[["Animal_ID", "EBV", "Inbreeding_%", "Reproduction_Warning"]], hide_index=True)
-            # ---------------------------------
 
-            # --- MATING STRATEGY SECTION ---
+            rc1, rc2 = st.columns(2)
+
+            with rc1:
+                st.success(f"Selection Candidates: {len(selection_df)} animal(s)")
+                st.write("Recommended based on high EBV and low inbreeding risk.")
+                st.dataframe(
+                    selection_df[["Animal_ID", "EBV", "Inbreeding_%", "Classification"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            with rc2:
+                st.error(f"Culling Candidates: {len(culling_df)} animal(s)")
+                st.write("Identified based on high inbreeding, backcross warning, or low genetic value.")
+                st.dataframe(
+                    culling_df[["Animal_ID", "EBV", "Inbreeding_%", "Reproduction_Warning"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
             st.markdown("---")
-            st.subheader("Future Mating Strategy (Inbreeding Prevention)")
-            
-            # Divide selection candidates into males and females for mating recommendations
-            # We use the internal 'Breeding_Interpretation' to guestimate gender if possible, 
-            # otherwise we just look at candidates IDs.
-            males = seleksi_df[seleksi_df["Breeding_Interpretation"].str.contains("Sire|Pejantan", case=False)]
-            females = seleksi_df[seleksi_df["Breeding_Interpretation"].str.contains("Dam|Indukan|Female|Betina", case=False)]
-            
-            col_m, col_f = st.columns(2)
-            with col_m:
-                st.write(f"**Available Elite/Selected Sires: {len(males)}**")
-                if not males.empty:
-                    st.dataframe(males[["Animal_ID", "EBV", "Inbreeding_%"]], hide_index=True)
-                else:
-                    st.info("No Elite Sires detected in selection candidates. Consider using **AI (Artificial Insemination)** with external tested sires.")
-            
-            with col_f:
-                st.write(f"**Available Elite/Selected Dams: {len(females)}**")
-                if not females.empty:
-                    st.dataframe(females[["Animal_ID", "EBV", "Inbreeding_%"]], hide_index=True)
-                else:
-                    st.info("No Elite Dams detected in selection candidates.")
+            st.subheader("Future Mating Strategy for Inbreeding Prevention")
 
-            if not males.empty and not females.empty:
-                st.markdown("#### Suggested Pairings (Based on Genetic Distance)")
-                pairings = []
-                # Simple strategy: Match best EBVs while ensuring they are from different lineages
-                # In a real app we'd check the A-matrix relationship between them.
-                for _, f_row in females.head(5).iterrows():
-                    f_id = f_row["Animal_ID"]
-                    # Find a sire with lowest relationship in A-matrix (if possible)
-                    # For now, we recommend cross-matching among survivors
-                    best_sire = males.iloc[0]["Animal_ID"]
-                    pairings.append({"Dam": f_id, "Suggested Sire": best_sire, "Strategy": "High EBV Crossing"})
-                
-                st.table(pairings)
-                st.caption("Note: Pairing recommendations ensure top genetic potential. Always verify physical health before mating.")
-            
+            st.markdown("""
+            This section does not only provide general advice. It also identifies which animals are suitable to be mated and simulates the expected offspring result using the additive relationship matrix.
+
+            The main formula used in the simulation is:
+
+            **Predicted Offspring Inbreeding (F) = 0.5 × Relationship between Sire and Dam × 100**
+
+            Therefore, animals with a low relationship value are preferred because they are expected to produce offspring with lower inbreeding risk.
+            """)
+
+            selected_sires, selected_dams = infer_mating_candidates(res_display_data)
+
+            ms1, ms2 = st.columns(2)
+
+            with ms1:
+                st.markdown("#### Potential Sire Candidates")
+                st.caption("Male animals are identified from Sire_ID roles or male ID patterns such as SIRE, BULL, MALE, PEJANTAN, or JANTAN.")
+                st.dataframe(
+                    selected_sires[["Animal_ID", "Sex_Role", "EBV", "Inbreeding_%", "Classification"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            with ms2:
+                st.markdown("#### Potential Dam Candidates")
+                st.caption("Female animals are identified from Dam_ID roles or female ID patterns such as DAM, COW, FEMALE, INDUK, or BETINA.")
+                st.dataframe(
+                    selected_dams[["Animal_ID", "Sex_Role", "EBV", "Inbreeding_%", "Classification"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            st.markdown("#### Mating Simulation Settings")
+
+            sim_col1, sim_col2 = st.columns(2)
+
+            with sim_col1:
+                max_offspring_f = st.slider(
+                    "Maximum acceptable predicted offspring inbreeding F (%)",
+                    min_value=0.0,
+                    max_value=25.0,
+                    value=6.25,
+                    step=0.25,
+                    help="Pairs with predicted offspring F below this value are considered safer."
+                )
+
+            with sim_col2:
+                max_sim_pairs = st.slider(
+                    "Number of mating pairs to display",
+                    min_value=5,
+                    max_value=50,
+                    value=20,
+                    step=5,
+                    help="The table will show the best simulated pairs based on low offspring F and high expected EBV."
+                )
+
+            simulated_pairs = simulate_mating_pairs(
+                res_display_data,
+                matrix_df,
+                h2_value=h2,
+                depression_rate_value=depression_rate,
+                max_offspring_f=max_offspring_f,
+                max_pairs=max_sim_pairs,
+            )
+
+            st.markdown("#### Recommended Mating Pairs and Offspring Simulation")
+
+            if simulated_pairs.empty:
+                st.warning(
+                    "No suitable mating simulation could be generated. Please check whether the dataset contains enough potential sires and dams, or add a Sex/Role indicator in the animal ID."
+                )
+            else:
+                recommended_only = simulated_pairs[
+                    simulated_pairs["Decision"].astype(str).str.contains("Recommended|safe|monitor", case=False, na=False)
+                ]
+
+                sim_metric_1, sim_metric_2, sim_metric_3, sim_metric_4 = st.columns(4)
+
+                sim_metric_1.metric("Simulated Pairs", f"{len(simulated_pairs)}")
+                sim_metric_2.metric(
+                    "Best Offspring F",
+                    f"{simulated_pairs['Predicted_Offspring_F_%'].min():.2f}%"
+                )
+                sim_metric_3.metric(
+                    "Highest Expected EBV",
+                    f"{simulated_pairs['Expected_Offspring_EBV'].max():.4f}"
+                )
+                sim_metric_4.metric(
+                    "Recommended / Safe Pairs",
+                    f"{len(recommended_only)}"
+                )
+
+                st.dataframe(
+                    simulated_pairs,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                best_pair = simulated_pairs.iloc[0]
+
+                best_sire_id = best_pair["Suggested_Sire"]
+                best_dam_id = best_pair["Suggested_Dam"]
+
+                best_sire_role = "Male / Sire Candidate"
+                best_dam_role = "Female / Dam Candidate"
+
+                if "Sex_Role" in res_display_data.columns:
+                    sire_match = res_display_data[res_display_data["Animal_ID"].astype(str) == str(best_sire_id)]
+                    dam_match = res_display_data[res_display_data["Animal_ID"].astype(str) == str(best_dam_id)]
+
+                    if not sire_match.empty:
+                        best_sire_role = sire_match.iloc[0]["Sex_Role"]
+
+                    if not dam_match.empty:
+                        best_dam_role = dam_match.iloc[0]["Sex_Role"]
+
+                st.success(f"""
+                **Best Suggested Pair**
+
+                The most suitable pair based on the current simulation is:
+
+                **Male / Sire:** {best_sire_id}  
+                **Female / Dam:** {best_dam_id}
+
+                This means the recommended mating pair is **{best_sire_id} as the male/sire** and **{best_dam_id} as the female/dam**.
+
+                - **Sire role identification:** {best_sire_role}
+                - **Dam role identification:** {best_dam_role}
+                - **Predicted offspring inbreeding:** {best_pair['Predicted_Offspring_F_%']:.2f}%
+                - **Expected offspring EBV:** {best_pair['Expected_Offspring_EBV']:.4f}
+                - **Relationship value:** {best_pair['Relationship_A']:.4f}
+                - **Estimated inbreeding depression:** {best_pair['Estimated_Inbreeding_Depression']:.4f} units
+                - **Risk level:** {best_pair['Risk_Level']}
+                - **Decision:** {best_pair['Decision']}
+                """)
+
+                st.markdown("#### Simulation Interpretation")
+
+                st.info("""
+                **How to read the simulation table:**
+
+                - `Relationship_A` shows the genetic relationship between the proposed sire and dam.
+                - `Predicted_Offspring_F_%` estimates the inbreeding coefficient of the future offspring.
+                - `Expected_Offspring_EBV` estimates the average genetic merit inherited from both parents.
+                - `Expected_Phenotype_Base` estimates offspring performance before inbreeding depression adjustment.
+                - `Predicted_Phenotype_After_Depression` estimates performance after subtracting the inbreeding depression effect.
+                - `Risk_Level` and `Decision` help determine whether the pair should be used, monitored, or avoided.
+
+                The best mating pair is not always the pair with the highest EBV. A pair with slightly lower EBV but much lower predicted offspring inbreeding is often safer for long-term population improvement.
+                """)
+
+                st.download_button(
+                    "Download Mating Simulation CSV",
+                    simulated_pairs.to_csv(index=False).encode("utf-8"),
+                    "mating_simulation.csv",
+                    "text/csv",
+                    use_container_width=True,
+                )
+
             st.markdown("""
             <div class="info-card" style="border-left: 4px solid #3b82f6;">
             <b>Mating Strategy to Prevent Future Inbreeding:</b>
             <ul>
-                <li><b>Avoid Full/Half-Sib Matings:</b> Never mate candidates sharing the same Sire or Dam.</li>
-                <li><b>Line Crossing:</b> Pair selected individuals from unrelated lineages (e.g., Line A x Line B).</li>
-                <li><b>Compensatory Mating:</b> Correct weaknesses in selected dams by choosing sires excelling in those specific traits.</li>
-                <li><b>A-Matrix Utility:</b> Look at the 'Relationship Matrix' tab. Pick pairs with relationship values near 0.0.</li>
+                <li><b>Avoid close-relative mating:</b> do not mate animals that share the same sire, dam, or close ancestors.</li>
+                <li><b>Use unrelated sires:</b> select sires from different genetic lines with low relationship values to the dams.</li>
+                <li><b>Apply sire rotation:</b> avoid using one sire too frequently.</li>
+                <li><b>Use artificial insemination wisely:</b> choose semen from tested, unrelated sires.</li>
+                <li><b>Check the Relationship Matrix:</b> prioritize mating pairs with relationship values close to zero.</li>
+                <li><b>Balance EBV and inbreeding:</b> do not select an animal only because it has high EBV.</li>
+                <li><b>Evaluate every generation:</b> recalculate EBV, inbreeding, and relationship values whenever new offspring are added.</li>
             </ul>
             </div>
             """, unsafe_allow_html=True)
-            # ---------------------------------
 
-            # Extra Insights Section
-            st.markdown("---")
             st.markdown("### Important Livestock Breeding Parameters")
-            
-            with st.expander("See Breeding Concept Details"):
-                col_i1, col_i2 = st.columns(2)
-                with col_i1:
+
+            with st.expander("See detailed breeding concept explanation"):
+                p1, p2 = st.columns(2)
+
+                with p1:
                     st.markdown("""
-                    **1. Heritability ($h^2$):**
-                    Extent to which phenotype variation is caused by additive genetics. 
-                    - Low (< 0.2): Environmentally dominant (e.g., reproduction).
-                    - Moderate (0.2 - 0.4): Growth.
-                    - High (> 0.4): Carcass/milk quality.
-                    
-                    **2. Breeding Value (EBV):**
-                    Prediction of parental genetic value that will be passed down. EBV is twice the genetic transmission value (*Progeny Difference*).
+                    **1. Heritability (h²)**  
+                    Heritability measures how much of the observed phenotype variation is caused by additive genetic factors.
+
+                    - Low heritability (< 0.20): strongly influenced by environment.
+                    - Moderate heritability (0.20 - 0.40): common in growth traits.
+                    - High heritability (> 0.40): common in carcass or some production traits.
+
+                    **2. Estimated Breeding Value (EBV)**  
+                    EBV predicts the genetic merit of an animal as a parent.
                     """)
-                with col_i2:
+
+                with p2:
                     st.markdown("""
-                    **3. Tandem Selection:**
-                    Selection method for one trait gradually over several generations before switching to another trait. Effective if focused on one primary economic goal.
+                    **3. Selection Intensity (i)**  
+                    Selection intensity describes how strict the selection process is.
 
-                    **Tandem Selection Strategy & Statistical Relationships:**
-                    If you implement tandem selection, note these strategic steps:
-                    - **Trait Priority:** Start with the trait that has the highest **heritability ($h^2$)** or economic value for rapid initial progress.
-                    - **Threshold (Goal):** Set a minimum target before switching to next trait so genetic progress on first trait is not lost.
-                    - **Correlation Analysis:** Use **Correlation ($r$)** metrics above to monitor if improvements in one trait don't damage others (negative correlation).
-                    - **Regression & Prediction:** Utilize **Regression ($b$)** value to predict phenotype performance changes alongside genetic changes in selected trait.
+                    **4. Tandem Selection**  
+                    Tandem selection improves one trait first before focusing on another trait.
 
-                    **4. Selection Intensity ($i$):**
-                    Selection strength applied. Fewer livestock chosen as parents from total population means greater intensity ($i$).
+                    **5. Correlation and Regression**  
+                    Correlation shows association strength, while regression estimates phenotype change when inbreeding increases.
                     """)
 
             st.markdown("### Insights & Management Strategy")
-            
-            col_in1, col_in2 = st.columns(2)
-            
-            with col_in1:
+
+            mi1, mi2 = st.columns(2)
+
+            with mi1:
                 st.info("""
-                ** Why is Inbreeding Dangerous?**
-                Inbreeding increases chances of detrimental recessive genes emerging. This causes:
-                - **Vitality Reduction:** Livestock get sick more easily.
-                - **Reproduction Issues:** Longer calving interval.
-                - **Growth Reduction:** Lower weaning and adult weights.
+                **Why is inbreeding dangerous?**
+
+                Inbreeding increases the chance that harmful recessive genes will appear in offspring. This may lead to:
+
+                - Lower fertility
+                - Reduced growth rate
+                - Weaker immune system
+                - Higher disease susceptibility
+                - Lower milk or meat production
+                - Higher risk of birth defects
+                - Reduced offspring survival
                 """)
-                
-            with col_in2:
+
+            with mi2:
                 st.success("""
-                ** Prevention Strategy**
-                1. **Sire Rotation:** Change sires every 2 years or after first female offspring reach mating age.
-                2. **Outcrossing:** Mate livestock with individuals from other groups/populations that are unrelated.
-                3. **Digital Recording:** Use this system routinely for simulations before mating livestock.
+                **Recommended prevention strategy**
+
+                1. Rotate sires regularly.
+                2. Use unrelated sires or external semen through artificial insemination.
+                3. Avoid full-sibling, half-sibling, and parent-offspring mating.
+                4. Record pedigree and phenotype data consistently.
+                5. Use this application before making mating decisions.
+                6. Recalculate inbreeding and EBV after every new generation.
                 """)
 
         with tabs[1]:
-            st.subheader(" Genetic Distribution Visualization")
-            
-            v_col1, v_col2 = st.columns(2)
-            
-            with v_col1:
-                st.markdown("### Inbreeding (F) Distribution")
-                # Histogram data F
-                f_data = res_display_data["Inbreeding_%"]
-                counts, bin_edges = np.histogram(f_data, bins=10)
-                hist_df = pd.DataFrame({
-                    "F range (%)": [f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}" for i in range(len(counts))],
-                    "Cattle Count": counts
-                })
-                st.bar_chart(hist_df.set_index("F range (%)"))
-                st.caption("This graph shows inbreeding level distribution within population.")
+            st.subheader("Genetic Distribution Visualization")
 
-            with v_col2:
-                st.markdown("### Genetic Potential (EBV)")
-                # Bar chart for top 10 EBVs
+            v1, v2 = st.columns(2)
+
+            with v1:
+                st.markdown("### Inbreeding F Distribution")
+                f_data = res_display_data["Inbreeding_%"]
+
+                if not f_data.empty:
+                    counts, bin_edges = np.histogram(f_data, bins=10)
+                    hist_df = pd.DataFrame({
+                        "F range (%)": [
+                            f"{bin_edges[i]:.1f}-{bin_edges[i + 1]:.1f}"
+                            for i in range(len(counts))
+                        ],
+                        "Animal Count": counts,
+                    })
+                    st.bar_chart(hist_df.set_index("F range (%)"))
+
+                st.caption("This graph shows the distribution of inbreeding levels in the population.")
+
+            with v2:
+                st.markdown("### Top 10 Genetic Potential Based on EBV")
                 top_ebv = res_display_data.sort_values("EBV", ascending=False).head(10)
-                st.bar_chart(top_ebv.set_index("Animal_ID")["EBV"])
-                st.caption("Top 10 livestock with highest Breeding Value (EBV).")
+
+                if not top_ebv.empty:
+                    st.bar_chart(top_ebv.set_index("Animal_ID")["EBV"])
+
+                st.caption("This chart shows the top animals with the highest Estimated Breeding Value.")
 
             st.markdown("---")
             st.markdown("### Inbreeding vs Phenotype Relationship")
-            # Scatter plot using Streamlit's native chart
-            # We add a small jitter if needed, but simple scatter 
-            scatter_data = res_display_data[res_display_data["Phenotype"].apply(lambda x: not is_unknown(x))].copy()
-            if not scatter_data.empty:
-                scatter_data["Phenotype_Val"] = pd.to_numeric(scatter_data["Phenotype"])
-                st.scatter_chart(
-                    scatter_data,
-                    x="Inbreeding_%",
-                    y="Phenotype_Val",
-                    color="Classification",
-                    size="EBV"
-                )
-                st.caption("Dots show inbreeding (X-axis) vs Phenotype Performance (Y-axis) relationship. Colors show classification.")
+
+            if "Phenotype" in res_display_data.columns:
+                scatter_data = res_display_data[
+                    res_display_data["Phenotype"].apply(lambda x: not is_unknown(x))
+                ].copy()
+
+                if not scatter_data.empty:
+                    scatter_data["Phenotype_Val"] = pd.to_numeric(
+                        scatter_data["Phenotype"],
+                        errors="coerce",
+                    )
+                    scatter_data["EBV_Size"] = pd.to_numeric(
+                        scatter_data["EBV"],
+                        errors="coerce",
+                    ).abs() + 1
+
+                    st.scatter_chart(
+                        scatter_data,
+                        x="Inbreeding_%",
+                        y="Phenotype_Val",
+                        color="Classification",
+                        size="EBV_Size",
+                    )
+                    st.caption(
+                        "Dots show the relationship between inbreeding and phenotype. Color indicates classification."
+                    )
+                else:
+                    st.info("No valid phenotype data is available for scatter visualization.")
             else:
-                st.info("No phenotype data available for distribution visualization.")
+                st.info("No phenotype column is available.")
 
         with tabs[2]:
-            st.subheader(" Pedigree Chart Visualization")
+            st.subheader("Pedigree Chart Visualization")
+
             if len(res_df) > 100:
-                st.info(" **Note:** Since data exceeds 100 items, visualization only shows the first 50 individuals for performance.")
-            st.markdown("This chart shows descendant relationships between cattle. Red color indicates high inbreeding (>25%).")
+                st.info(
+                    "Since the data contains more than 100 animals, the chart only displays the first 50 individuals for performance."
+                )
+
+            st.markdown(
+                "This chart shows parent-offspring relationships. Yellow indicates inbred animals, while red indicates very high inbreeding."
+            )
             st.graphviz_chart(make_dot(res_df))
 
         with tabs[3]:
-            st.subheader(" Additive Relationship Matrix")
+            st.subheader("Additive Relationship Matrix")
+
+            st.write(
+                "The relationship matrix shows genetic relationship values between individuals. "
+                "For mating decisions, choose pairs with low values or close to zero."
+            )
+
             if len(matrix_df) > 500:
-                st.warning(" **Performance Warning:** Showing matrix > 500x500 in browser may cause lag. Suggested to download CSV if data is very large.")
+                st.warning(
+                    "The matrix is larger than 500x500 and may cause browser lag. Download the CSV if needed."
+                )
                 if st.button("Display Matrix Anyway"):
                     st.dataframe(matrix_df, use_container_width=True)
             else:
                 st.dataframe(matrix_df, use_container_width=True)
 
         with tabs[4]:
-            st.subheader(" Heterosis Insights & Crossbreeding Strategy")
-            
-            h_col1, h_col2 = st.columns(2)
-            
-            with h_col1:
-                st.markdown("""
-                ### What is Heterosis?
-                **Heterosis** (or *Hybrid Vigor*) is the performance increase in crossbred offspring compared to average of both parents.
-                
-                **Simple Formula:**
-                $$HF_1 = \\text{Offspring Average} - \\text{Parent Average}$$
-                $$\\% \\text{Heterosis} = \\frac{HF_1}{\\text{Parent Average}} \\times 100\\%$$
-                
-                **Why is it important?**
-                Heterosis is very effective for traits with **low heritability**, such as:
-                - Survival.
-                - Fertility/Reproduction.
-                - Disease resistance.
-                """)
-                
+            st.subheader("Heterosis & Crossbreeding Analysis")
+
+            if "Heterosis" in res_display_data.columns:
+                heterosis_df = res_display_data.copy()
+                heterosis_df["Heterosis"] = pd.to_numeric(
+                    heterosis_df["Heterosis"],
+                    errors="coerce",
+                ).fillna(0)
+
+                avg_heterosis = heterosis_df["Heterosis"].mean()
+                max_heterosis = heterosis_df["Heterosis"].max()
+                min_heterosis = heterosis_df["Heterosis"].min()
+
+                h1, h2_col, h3 = st.columns(3)
+                h1.metric("Average Heterosis", f"{avg_heterosis:.4f}")
+                h2_col.metric("Highest Heterosis", f"{max_heterosis:.4f}")
+                h3.metric("Lowest Heterosis", f"{min_heterosis:.4f}")
+
                 st.info("""
-                ** Important Insight:**
-                Inbreeding is the opposite of heterosis. If inbreeding reduces performance (Inbreeding Depression), then crossbreeding (outbreeding) increases it through heterosis.
+                **Heterosis Interpretation**
+
+                Heterosis measures offspring performance compared with the average performance of both parents.
+                A positive value indicates that the offspring performs better than the parental average.
+                A negative value indicates that the offspring performs below the parental average.
+
+                In commercial livestock systems, heterosis is useful for improving growth, survival, fertility, and production traits through planned crossbreeding.
                 """)
 
-            with h_col2:
+                top_h = heterosis_df.sort_values("Heterosis", ascending=False).head(10)
+
+                st.markdown("### Top Heterosis Individuals")
+                st.dataframe(
+                    top_h[["Animal_ID", "Sire_ID", "Dam_ID", "Phenotype", "Heterosis", "EBV", "Inbreeding_%"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                if not top_h.empty:
+                    st.bar_chart(top_h.set_index("Animal_ID")["Heterosis"])
+
+                st.markdown("### Crossbreeding Management Notes")
                 st.markdown("""
-                ### Crossbreeding Strategy
-                To get maximum heterosis, you can implement:
-                
-                1. **Terminal Cross:** All crossbred offspring sold (not kept as replacements). Gives 100% heterosis in offspring.
-                2. **Rotational Crossing:** Use two or three breeds alternately. Maintains heterosis around 67% (2 breeds) or 86% (3 breeds) in sustained generations.
-                3. **Backcrossing:** Mating offspring back to one of pure parent breeds. Used to introduce specific traits from one breed to another.
-                
-                **Recommendation:**
-                - Use sires from breeds superior in growth traits.
-                - Use dams from breeds that have maternal superiority (milk production, temperament).
+                - Positive heterosis may indicate useful genetic combinations between sire and dam.
+                - Avoid using heterosis alone as a selection criterion; always check EBV and inbreeding level.
+                - Use crossbreeding to restore genetic diversity when inbreeding is increasing.
+                - For purebred improvement, use crossbreeding carefully because it may change breed composition.
+                """)
+            else:
+                st.info("Heterosis data is not available.")
+
+
+        with tabs[5]:
+            st.subheader("Pure Line Simulation for GGPS, GPS, PS, and FS")
+
+            st.markdown("""
+            This module simulates a safe **four-line breeding pyramid** to support the development of:
+
+            - **GGPS**: Great Grand Parent Stock as the pure-line nucleus.
+            - **GPS**: Grand Parent Stock as pure-line multiplication stock.
+            - **PS**: Parent Stock from controlled inter-line crossing.
+            - **FS**: Final Stock as terminal commercial offspring.
+
+            The goal is to keep the pure lines safe by choosing male and female founders with low relationship values, low predicted offspring inbreeding, and acceptable EBV.
+            """)
+
+            st.warning("""
+            Important: this is a decision-support simulation. A real pure-line program should ideally use many males and females per line, not only one pair. If the uploaded dataset has limited animals, the system will still show the safest available structure, but it should be validated by a breeding expert before implementation.
+            """)
+
+            pl_col1, pl_col2, pl_col3 = st.columns(3)
+
+            with pl_col1:
+                pure_max_f = st.slider(
+                    "Maximum safe F for pure-line offspring (%)",
+                    min_value=0.0,
+                    max_value=12.5,
+                    value=6.25,
+                    step=0.25,
+                    help="Lower values are safer for long-term pure-line development."
+                )
+
+            with pl_col2:
+                required_lines = st.slider(
+                    "Number of pure lines",
+                    min_value=2,
+                    max_value=4,
+                    value=4,
+                    step=1,
+                    help="Four lines are recommended to build a GGPS-GPS-PS-FS pyramid."
+                )
+
+            with pl_col3:
+                min_founder_note = st.selectbox(
+                    "Program objective",
+                    [
+                        "Balanced safety and EBV",
+                        "Prioritize lowest inbreeding",
+                        "Prioritize higher EBV with safe F",
+                    ],
+                )
+
+            pair_pool = build_pair_pool_for_pure_lines(
+                res_display_data,
+                matrix_df,
+                h2_value=h2,
+                depression_rate_value=depression_rate,
+                max_offspring_f=pure_max_f,
+            )
+
+            selected_lines = select_four_safe_pure_lines(
+                pair_pool,
+                max_offspring_f=pure_max_f,
+                required_lines=required_lines,
+            )
+
+            if pair_pool.empty or selected_lines.empty:
+                st.error(
+                    "The system could not build a pure-line simulation from the current data. Please provide more animals with clear sire/dam information or add more unrelated male and female candidates."
+                )
+            else:
+                st.markdown("### 1. Selected GGPS Pure-Line Founders")
+
+                founder_display = selected_lines[[
+                    "Line",
+                    "GGPS_Male",
+                    "Sire_Role",
+                    "GGPS_Female",
+                    "Dam_Role",
+                    "Relationship_A",
+                    "GGPS_Expected_F_%",
+                    "GGPS_Expected_EBV",
+                    "Risk_Level",
+                ]].copy()
+
+                founder_display = founder_display.rename(columns={
+                    "GGPS_Male": "GGPS_Male_Sire",
+                    "GGPS_Female": "GGPS_Female_Dam",
+                    "GGPS_Expected_F_%": "Predicted_GGPS_Offspring_F_%",
+                    "GGPS_Expected_EBV": "Expected_GGPS_Offspring_EBV",
+                })
+
+                st.dataframe(
+                    founder_display,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                safe_count = len(selected_lines[selected_lines["GGPS_Expected_F_%"] <= pure_max_f])
+                unique_sires = selected_lines["GGPS_Male"].nunique()
+                unique_dams = selected_lines["GGPS_Female"].nunique()
+
+                pm1, pm2, pm3, pm4 = st.columns(4)
+                pm1.metric("Selected Lines", f"{len(selected_lines)}")
+                pm2.metric("Safe Lines", f"{safe_count}")
+                pm3.metric("Unique Males", f"{unique_sires}")
+                pm4.metric("Unique Females", f"{unique_dams}")
+
+                if len(selected_lines) < 4:
+                    st.warning(
+                        "Less than four lines could be selected from the current data. Add more unrelated male and female candidates to build a complete four-line GGPS-GPS-PS-FS structure."
+                    )
+
+                if unique_sires < len(selected_lines) or unique_dams < len(selected_lines):
+                    st.warning(
+                        "Some sires or dams are reused across lines. For a safer pure-line program, each line should ideally have different unrelated male and female founders."
+                    )
+
+                st.markdown("### 2. GGPS → GPS → PS → FS Pyramid Simulation")
+
+                pyramid_df = simulate_stock_pyramid_from_lines(
+                    selected_lines,
+                    max_offspring_f=pure_max_f,
+                )
+
+                st.dataframe(
+                    pyramid_df,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                st.markdown("### 3. Breeding Pyramid Flow")
+
+                st.graphviz_chart(make_pure_line_flow_dot(pyramid_df))
+
+                st.markdown("### 4. Recommended Four-Line Structure")
+
+                if len(selected_lines) >= 4:
+                    line_a = selected_lines.iloc[0]
+                    line_b = selected_lines.iloc[1]
+                    line_c = selected_lines.iloc[2]
+                    line_d = selected_lines.iloc[3]
+
+                    st.success(f"""
+                    **Safe Four-Line Pyramid Recommendation**
+
+                    **GGPS Pure Lines**
+                    - **Line A:** Male/Sire `{line_a['GGPS_Male']}` × Female/Dam `{line_a['GGPS_Female']}`
+                    - **Line B:** Male/Sire `{line_b['GGPS_Male']}` × Female/Dam `{line_b['GGPS_Female']}`
+                    - **Line C:** Male/Sire `{line_c['GGPS_Male']}` × Female/Dam `{line_c['GGPS_Female']}`
+                    - **Line D:** Male/Sire `{line_d['GGPS_Male']}` × Female/Dam `{line_d['GGPS_Female']}`
+
+                    **GPS Stage**
+                    - Maintain each line separately as pure-line multiplication stock.
+
+                    **PS Stage**
+                    - Produce **PS Male Line** from `Line A × Line B`.
+                    - Produce **PS Female Line** from `Line C × Line D`.
+
+                    **FS Stage**
+                    - Produce commercial **Final Stock** from `(Line A × Line B) × (Line C × Line D)`.
+
+                    This structure helps preserve pure-line identity at the GGPS/GPS level while reducing inbreeding risk at PS and FS levels through controlled inter-line crossing.
+                    """)
+                else:
+                    st.info(
+                        "A complete four-line recommendation requires four selected lines. The current simulation shows the safest partial structure available from the uploaded dataset."
+                    )
+
+                st.markdown("### 5. Safety Rules for Pure-Line Production")
+
+                st.info("""
+                **Recommended safety rules:**
+
+                1. Keep **GGPS and GPS** as pure-line nucleus and multiplication stock.
+                2. Do not use **FS** as breeding stock. FS should be terminal commercial stock.
+                3. Avoid mating animals with predicted offspring F above the selected safety threshold.
+                4. Maintain more than one male and one female per line whenever possible.
+                5. Use the relationship matrix before every mating decision.
+                6. Recalculate the pyramid every generation because relationship values and inbreeding risks will change.
+                7. If a line repeatedly produces high F values, introduce unrelated animals into that line or redesign the line structure.
                 """)
 
-            st.markdown("---")
-            st.markdown("""
-            ### Genetic Correlation vs Heterosis
-            Important to remember that heterosis is not permanent (not stably inherited like EBV). 
-            - **EBV** is used for long-term genetic progress (selection).
-            - **Heterosis** is used for short-term production gain (crossbreeding).
-            
-            Our system helps you keep inbreeding levels low so that heterosis potential during future crossbreeding remains optimal. Perform regular regulation and evaluation to ensure population remains healthy and productive, and continue data recording for more accurate genetic analysis in the future.
-            """)
-        
-    except Exception as e:
-        st.error(f" Error occurred in data processing: {e}")
-        st.exception(e)
+                st.download_button(
+                    "Download Pure Line Founder Plan CSV",
+                    founder_display.to_csv(index=False).encode("utf-8"),
+                    "pure_line_founder_plan.csv",
+                    "text/csv",
+                    use_container_width=True,
+                )
 
-    # Footer
-    st.markdown("""
-        <div class="footer">
-            Analytics System v2.5 | Created by Galuh Adi Insani
-        </div>
-    """, unsafe_allow_html=True)
+                st.download_button(
+                    "Download GGPS-GPS-PS-FS Pyramid Simulation CSV",
+                    pyramid_df.to_csv(index=False).encode("utf-8"),
+                    "pure_line_pyramid_simulation.csv",
+                    "text/csv",
+                    use_container_width=True,
+                )
+
+    except Exception as e:
+        st.error("An error occurred while processing the data.")
+        st.exception(e)
+        st.info("""
+        Please check the following:
+
+        1. `Animal_ID`, `Sire_ID`, and `Dam_ID` columns are mapped correctly.
+        2. Animal IDs are unique and consistent.
+        3. Missing parents are written as `-` or left empty.
+        4. The pedigree does not contain cycles, for example an animal listed as its own ancestor.
+        5. Phenotype values are numeric if used for EBV calculation.
+        """)
+
 
 if __name__ == "__main__":
     main()
