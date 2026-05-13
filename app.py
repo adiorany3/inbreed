@@ -143,6 +143,44 @@ def calculate_inbreeding_depression(f_val: float, depression_rate: float) -> flo
     return f_val * depression_rate
 
 
+def analyze_hardy_weinberg(result_df: pd.DataFrame) -> Dict:
+    """
+    Menganalisis keseimbangan Hardy-Weinberg (HWE) dalam populasi.
+    Secara teoretis, inbreeding (F) adalah ukuran deviasi dari heterozigositas yang diharapkan (HWE).
+    F > 0 mengindikasikan defisit heterozigot.
+    """
+    avg_f = result_df["Inbreeding_%"].mean() / 100.0  # Proporsi FIS
+    
+    # Ambang batas praktis: F > 0.05 (FIS > 5%) dianggap deviasi signifikan dari HWE
+    is_deviating = avg_f > 0.05
+    status = "⚠️ Terjadi Deviasi (Tidak Seimbang)" if is_deviating else "✅ Mendekati Keseimbangan"
+    
+    insight = (
+        f"Rata-rata koefisien inbreeding populasi ($F_{{IS}}$) adalah {avg_f:.4f}. "
+        "Dalam genetika populasi, nilai ini menunjukkan sejauh mana populasi menyimpang dari kondisi ideal Hardy-Weinberg (perkawinan acak)."
+    )
+    
+    if is_deviating:
+        saran = [
+            "**Outcrossing:** Datangkan pejantan/semen dari luar populasi yang tidak berkerabat.",
+            "**Meningkatkan Ne:** Tambah jumlah pejantan yang aktif dalam proses pembiakan untuk meningkatkan ukuran populasi efektif.",
+            "**Rotasi Pejantan:** Hindari penggunaan satu pejantan ('Popular Sire') secara berlebihan pada banyak betina.",
+            "**Crossbreeding:** Jika tujuan adalah produksi komersial, lakukan persilangan antar bangsa untuk mengembalikan heterozigositas."
+        ]
+    else:
+        saran = [
+            "Sistem perkawinan saat ini masih mampu menjaga variasi genetik.",
+            "Tetap monitor silsilah untuk menghindari peningkatan inbreeding secara mendadak di generasi berikutnya."
+        ]
+
+    return {
+        "status": status,
+        "insight": insight,
+        "saran": saran,
+        "is_deviating": is_deviating
+    }
+
+
 def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
     cols = [id_col, sire_col, dam_col]
     if phenotype_col and phenotype_col in raw_df.columns:
@@ -477,23 +515,88 @@ def generate_pdf(result_df, settings=None):
     elements.append(Paragraph("LAPORAN ANALISIS PEMULIAAN TERNAK", title_style))
     elements.append(Spacer(1, 20))
     
-    # Summary Statistics PDF
+    # --- BAGIAN 1: RINGKASAN POPULASI ---
     avg_f = result_df["Inbreeding_%"].mean()
     avg_ebv = result_df["EBV"].mean()
-    elements.append(Paragraph(f"<b>Ringkasan Populasi:</b>", styles['Heading2']))
+    elements.append(Paragraph(f"<b>1. Ringkasan Populasi:</b>", styles['Heading2']))
+    
+    # Cari nilai statistik tambahan jika parameter seleksi ada
+    avg_p = 0
+    sd_p = 0
+    response = 0
+    if "Phenotype" in result_df.columns:
+        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors='coerce').dropna()
+        if not valid_phenos.empty:
+            avg_p = valid_phenos.mean()
+            sd_p = valid_phenos.std()
+            if settings and 'h2' in settings and 'intensity' in settings:
+                response = calculate_selection_response(settings['h2'], sd_p, settings['intensity'])
+
     summary_data = [
         ["Total Populasi", f"{len(result_df)} ekor"],
         ["Rata-rata Inbreeding (F)", f"{avg_f:.2f}%"],
         ["Rata-rata EBV", f"{avg_ebv:.4f}"],
         ["Waktu Analisis", pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')],
     ]
-    st_table = Table(summary_data, colWidths=[150, 250])
-    st_table.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-    elements.append(st_table)
-    elements.append(Spacer(1, 20))
     
-            # Main Data Table
-    elements.append(Paragraph("<b>Detail Individu & Klasifikasi:</b>", styles['Heading2']))
+    if avg_p > 0:
+        summary_data.append(["Rata-rata Fenotipe", f"{avg_p:.2f}"])
+        summary_data.append(["Standar Deviasi (σp)", f"{sd_p:.2f}"])
+        if response > 0:
+            summary_data.append(["Tanggapan Seleksi (R)", f"{response:.4f}"])
+
+    st_table = Table(summary_data, colWidths=[180, 220])
+    st_table.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+    ]))
+    elements.append(st_table)
+    elements.append(Spacer(1, 15))
+
+    # --- BAGIAN 2: ESTIMASI TANGGAPAN SELEKSI ---
+    if response > 0:
+        elements.append(Paragraph("<b>2. Estimasi Kemajuan Genetik:</b>", styles['Heading2']))
+        interpretasi_txt = f"""
+        Berdasarkan heritabilitas ({settings['h2']}) dan intensitas seleksi ({settings['intensity']}), 
+        populasi diprediksi mengalami kemajuan sebesar <b>{response:.4f}</b> unit pada generasi mendatang. 
+        Estimasi rata-rata performa keturunan adalah <b>{avg_p + response:.2f}</b> unit.
+        """
+        elements.append(Paragraph(interpretasi_txt, styles['Normal']))
+        elements.append(Spacer(1, 15))
+
+    # --- BAGIAN 3: ANALISIS REGRESI (DAMPAK INBREEDING) ---
+    stats = calculate_stats(result_df)
+    if stats:
+        elements.append(Paragraph("<b>3. Analisis Hubungan Inbreeding vs Fenotipe:</b>", styles['Heading2']))
+        reg_data = [
+            ["Parameter", "Nilai", "Interpretasi"],
+            ["Korelasi (r)", f"{stats['correlation']:.4f}", "Kekuatan hubungan"],
+            ["Regresi (b)", f"{stats['b']:.4f}", "Penurunan per 1% F"],
+            ["R-Squared", f"{stats['r_squared']:.4f}", "Akurasi model"]
+        ]
+        reg_table = Table(reg_data, colWidths=[100, 100, 200])
+        reg_table.setStyle(TableStyle([
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#e5e7eb")),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ]))
+        elements.append(reg_table)
+        elements.append(Paragraph(f"Setiap kenaikan 1% inbreeding diprediksi menurunkan performa sebesar {abs(stats['b']):.4f} unit.", styles['Italic']))
+        elements.append(Spacer(1, 15))
+    
+    # --- BAGIAN HWE (PDF) ---
+    hwe_res = analyze_hardy_weinberg(result_df)
+    elements.append(Paragraph("<b>4. Analisis Keseimbangan Hardy-Weinberg:</b>", styles['Heading2']))
+    elements.append(Paragraph(f"<b>Status: {hwe_res['status']}</b>", styles['Normal']))
+    elements.append(Paragraph(hwe_res['insight'], styles['Normal']))
+    elements.append(Paragraph("<b>Saran Manajemen:</b>", styles['Normal']))
+    for s in hwe_res['saran']:
+        elements.append(Paragraph(f"• {s}", styles['Normal']))
+    elements.append(Spacer(1, 15))
+
+    # --- BAGIAN 5: DETAIL INDIVIDU ---
+    elements.append(Paragraph("<b>5. Detail Individu & Klasifikasi:</b>", styles['Heading2']))
     
     # Batasi tabel di PDF hanya 1000 baris pertama untuk performa PDF
     limit_pdf = result_df.head(1000)
@@ -537,40 +640,41 @@ def generate_pdf(result_df, settings=None):
     t.setStyle(TableStyle(table_styles))
     elements.append(t)
 
-    # Menambahkan Visualisasi Pedigree ke PDF
+    # --- BAGIAN 6: SILSILAH LENGKAP ---
     elements.append(Spacer(1, 30))
-    elements.append(Paragraph("<b>Bagan Silsilah & Struktur Keturunan:</b>", styles['Heading2']))
+    elements.append(Paragraph("<b>6. Silsilah Lengkap & Hubungan Keturunan:</b>", styles['Heading2']))
     
-    # Pendekatan Berbasis Teks (Dot Notation) agar informasi Hubungan tidak hilang 
-    # meskipun Graphviz tidak terinstal di server.
-    dot_text_style = ParagraphStyle(
-        'DotTextStyle',
-        parent=styles['Normal'],
-        fontName='Courier',
-        fontSize=8,
-        leading=10,
-        leftIndent=20
-    )
-    
-    elements.append(Paragraph("Data hubungan keturunan (30 individu pertama):", styles['Italic']))
-    elements.append(Spacer(1, 10))
-    
-    # Ambil 30 baris silsilah sebagai referensi teks di PDF
-    pedigree_lines = []
-    for _, row in result_df.head(30).iterrows():
-        sire = row['Sire_ID'] if not is_unknown(row['Sire_ID']) else "Unknown"
-        dam = row['Dam_ID'] if not is_unknown(row['Dam_ID']) else "Unknown"
-        pedigree_lines.append(f"• {row['Animal_ID']} &larr; Sire: {sire}, Dam: {dam}")
-    
-    pedigree_text = "<br/>".join(pedigree_lines)
-    elements.append(Paragraph(pedigree_text, dot_text_style))
+    # Gunakan tabel untuk silsilah agar lebih rapi dan bisa mencakup banyak data
+    ped_data = [["Individu", "Bapak (Sire)", "Induk (Dam)"]]
+    ped_styles = [
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#475569")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 0), (-1, -1), 8)
+    ]
+
+    # Ambil 1000 individu pertama untuk silsilah di PDF
+    limit_ped = result_df.head(1000)
+    for _, row in limit_ped.iterrows():
+        sire = str(row['Sire_ID']) if not is_unknown(row['Sire_ID']) else "-"
+        dam = str(row['Dam_ID']) if not is_unknown(row['Dam_ID']) else "-"
+        ped_data.append([str(row['Animal_ID']), sire, dam])
+
+    if len(result_df) > 1000:
+        ped_data.append(["...", "...", "..."])
+
+    t_ped = Table(ped_data, repeatRows=1, colWidths=[130, 130, 130])
+    t_ped.setStyle(TableStyle(ped_styles))
+    elements.append(t_ped)
     elements.append(Spacer(1, 15))
 
     # Link URL permanen dengan format yang lebih eksplisit
     link_url = "https://inbreeding.streamlit.app/"
     elements.append(Paragraph(f'<b>Akses Visualisasi Lengkap:</b> <a href="{link_url}" color="blue"><u>{link_url}</u></a>', styles['Normal']))
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("<i>*Catatan: Karena data melebihi 100 ekor, visualisasi pada aplikasi web hanya menampilkan 50 individu pertama untuk menjaga performa.</i>", styles['Italic']))
+    elements.append(Paragraph("<i>Developed by: Galuh Adi Insani</i>", styles['Italic']))
     
     doc.build(elements)
     buffer.seek(0)
@@ -901,8 +1005,26 @@ def main():
                         
                         st.info(f"**Interpretasi Statis:** Persamaan regresi: $Y = {stats['a']:.2f} + ({stats['b']:.4f}) X$. "
                                 f"Artinya, setiap kenaikan 1% inbreeding diprediksi menurunkan fenotipe sebesar {abs(stats['b']):.4f} unit.")
+                    
+                    # --- ANALISIS HARDY-WEINBERG ---
+                    st.markdown("---")
+                    st.subheader("Analisis Keseimbangan Hardy-Weinberg (HWE)")
+                    hwe_res = analyze_hardy_weinberg(res_display_data)
+                    
+                    hw_col1, hw_col2 = st.columns([0.4, 0.6])
+                    with hw_col1:
+                        st.write(f"#### Status: {hwe_res['status']}")
+                        st.write(hwe_res['insight'])
+                    
+                    with hw_col2:
+                        st.write("**Rekomendasi Strategi:**")
+                        for s in hwe_res['saran']:
+                            st.write(f"- {s}")
+                    
+                    if hwe_res['is_deviating']:
+                        st.warning("Populasi menunjukkan indikasi perkawinan tidak acak yang signifikan (Inbreeding terakumulasi).")
                     else:
-                        st.warning("Data tidak cukup untuk menghitung korelasi dan regresi (minimal 3 data dengan fenotipe).")
+                        st.success("Populasi masih dalam jalur distribusi genetik yang sehat.")
                 else:
                     st.warning("Data fenotipe tidak valid untuk menghitung SD.")
 
@@ -947,7 +1069,11 @@ def main():
             c1.download_button(" CSV (Data Lengkap)", csv, "analytics_data.csv", "text/csv", use_container_width=True)
             
             # PDF Report
-            pdf_data = generate_pdf(res_display_data)
+            current_settings = {
+                'h2': h2,
+                'intensity': intensity
+            }
+            pdf_data = generate_pdf(res_display_data, settings=current_settings)
             c2.download_button(" PDF (Laporan Resmi)", pdf_data, "Breeding_Report.pdf", "application/pdf", use_container_width=True)
             
             # Simple Text Report
