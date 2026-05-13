@@ -2525,6 +2525,7 @@ def main():
             "Heterosis & Crossbreeding",
             "Pure Line Pyramid",
             "Summary & Conclusion",
+            "Real-World Implementation",
         ])
 
         with tabs[0]:
@@ -3854,6 +3855,235 @@ def main():
                 "Download Summary CSV",
                 summary_csv.to_csv(index=False).encode("utf-8"),
                 "breeder_summary.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+
+        with tabs[7]:
+            st.subheader("Real-World Implementation of Pedigree Breeding")
+
+            st.markdown("""
+            This tab explains how pedigree-based breeding can be applied in real livestock production. 
+            The goal is to help breeders understand that pedigree analysis is possible, but it must be treated as a long-term management system, not an instant method for producing elite animals.
+            """)
+
+            st.info("""
+            **Main conclusion:**  
+            Pedigree breeding is possible in real life, but its difficulty depends on the species, population size, recording quality, generation interval, and breeding objective. 
+            The system is faster and easier to apply in poultry than in cattle because poultry have shorter generation intervals and larger offspring numbers.
+            """)
+
+            st.markdown("### 1. Is Pedigree Breeding Realistically Possible?")
+
+            st.markdown("""
+            Yes, pedigree breeding is realistically possible. However, it requires consistent recording over multiple generations. 
+            Breeders need to record individual identity, sire, dam, sex, birth date, performance, reproduction status, health status, and mating history.
+
+            This application helps reduce manual difficulty by calculating inbreeding, EBV, relationship matrix, mating simulation, pure-line planning, and breeder-friendly conclusions. 
+            It does not replace real field evaluation, but it helps breeders make safer and more organized decisions.
+            """)
+
+            st.markdown("### 2. Poultry vs Cattle Implementation")
+
+            species_df = pd.DataFrame({
+                "Aspect": [
+                    "Generation interval",
+                    "Number of offspring",
+                    "Speed of selection",
+                    "Pure-line system",
+                    "Elite identification",
+                    "Main challenge",
+                ],
+                "Poultry / Chicken": [
+                    "Shorter, so genetic progress can be observed faster.",
+                    "High, allowing more candidates to be evaluated.",
+                    "Faster because many individuals can be selected each generation.",
+                    "Very suitable for GGPS, GPS, PS, and FS pyramid systems.",
+                    "More practical because many candidates are available.",
+                    "Requires strict line separation and accurate recording.",
+                ],
+                "Cattle": [
+                    "Longer, so selection decisions take more time.",
+                    "Low, usually one calf per pregnancy.",
+                    "Slower because offspring need time to mature and be evaluated.",
+                    "Possible, but more difficult and expensive.",
+                    "Harder because fewer animals are available and evaluation takes years.",
+                    "Long generation interval, high cost, and limited population size.",
+                ],
+            })
+
+            st.dataframe(species_df, hide_index=True, use_container_width=True)
+
+            st.markdown("### 3. Why Finding Elite Animals Is Difficult")
+
+            st.warning("""
+            In real breeding programs, elite animals are difficult to find because good performance alone is not enough. 
+            An animal may have high performance, but it may not be suitable as breeding stock if its inbreeding is high, its relationship to other animals is too close, or its reproductive performance is poor.
+            """)
+
+            difficulty_df = pd.DataFrame({
+                "Challenge": [
+                    "Long generation interval",
+                    "Incomplete recording",
+                    "Small population size",
+                    "High cost of evaluation",
+                    "Performance is not always genetic",
+                    "High relationship between candidates",
+                ],
+                "Practical Meaning": [
+                    "Breeders must wait until animals mature before confirming breeding value.",
+                    "Missing sire/dam records reduce the accuracy of inbreeding and relationship analysis.",
+                    "Few candidates make it harder to find low-risk, high-EBV animals.",
+                    "Measuring growth, production, fertility, and health requires time and resources.",
+                    "A high-performing animal may perform well because of environment, not genetics.",
+                    "Using related animals repeatedly increases inbreeding risk in the next generation.",
+                ],
+                "How This App Helps": [
+                    "Provides early screening using available pedigree and phenotype data.",
+                    "Shows additional founders and warnings when parent records are incomplete.",
+                    "Ranks candidates using EBV, inbreeding, and classification.",
+                    "Summarizes data automatically for faster decision-making.",
+                    "Uses phenotype and heritability to estimate EBV and selection response.",
+                    "Uses the relationship matrix and mating simulation before breeding.",
+                ],
+            })
+
+            st.dataframe(difficulty_df, hide_index=True, use_container_width=True)
+
+            st.markdown("### 4. Practical Step-by-Step Implementation")
+
+            st.markdown("""
+            A realistic breeding program should be implemented gradually:
+
+            **Stage 1 — Basic Recording**  
+            Record `Animal_ID`, `Sire_ID`, `Dam_ID`, sex, birth date, line, and generation.
+
+            **Stage 2 — Performance Recording**  
+            Add measurable traits such as body weight, egg production, milk yield, growth rate, fertility, survival, or health score.
+
+            **Stage 3 — Genetic Screening**  
+            Use this application to calculate inbreeding, EBV, classification, relationship matrix, and risk status.
+
+            **Stage 4 — Selection and Culling**  
+            Select animals with high EBV and low inbreeding as breeding candidates. 
+            Avoid using animals with high inbreeding, reproduction warnings, or low genetic value as parents.
+
+            **Stage 5 — Mating Simulation**  
+            Simulate sire-dam combinations before mating. 
+            Choose pairs with low predicted offspring inbreeding and acceptable expected EBV.
+
+            **Stage 6 — Next Generation Validation**  
+            After offspring are born, record them and recalculate all values. 
+            Breeding decisions should be updated every generation.
+            """)
+
+            st.markdown("### 5. Recommended Breeding Workflow")
+
+            workflow_df = pd.DataFrame({
+                "Step": [
+                    "1. Identify animals",
+                    "2. Record pedigree",
+                    "3. Record phenotype",
+                    "4. Run analysis",
+                    "5. Select candidates",
+                    "6. Simulate mating",
+                    "7. Produce offspring",
+                    "8. Recalculate",
+                ],
+                "Breeder Action": [
+                    "Give every animal a unique ID.",
+                    "Record sire and dam for every animal.",
+                    "Measure production or performance traits.",
+                    "Upload data into this application.",
+                    "Choose high-EBV and low-F animals.",
+                    "Check predicted offspring F before mating.",
+                    "Record new offspring as the next generation.",
+                    "Repeat analysis after every generation.",
+                ],
+                "Expected Benefit": [
+                    "Prevents confusion and duplicate records.",
+                    "Allows inbreeding and relationship calculation.",
+                    "Improves EBV and selection accuracy.",
+                    "Produces objective breeding information.",
+                    "Improves genetic progress safely.",
+                    "Reduces risk of close-relative mating.",
+                    "Maintains long-term pedigree continuity.",
+                    "Keeps the breeding program updated.",
+                ],
+            })
+
+            st.dataframe(workflow_df, hide_index=True, use_container_width=True)
+
+            st.markdown("### 6. Practical Notes for Poultry Pure-Line Programs")
+
+            st.success("""
+            Poultry is more suitable for pure-line pyramid planning because the population can be expanded faster. 
+            The recommended structure is:
+
+            - **GGPS:** pure-line nucleus population.
+            - **GPS:** multiplication of each pure line.
+            - **PS:** controlled crossing between selected lines.
+            - **FS:** final commercial stock, not used as breeding nucleus.
+
+            For safety, keep each pure line separated, avoid uncontrolled mating, and recalculate inbreeding after every generation.
+            """)
+
+            st.markdown("### 7. Practical Notes for Cattle Breeding Programs")
+
+            st.info("""
+            For cattle, pedigree breeding is still useful but should be understood as a long-term program. 
+            Because cattle have a longer generation interval and fewer offspring, the application is most useful for:
+
+            - preventing close-relative mating,
+            - choosing safer sire-dam combinations,
+            - identifying replacement candidates,
+            - supporting artificial insemination planning,
+            - avoiding overuse of one popular sire,
+            - monitoring long-term inbreeding trends.
+
+            Elite cattle may take years to confirm, so early screening should be combined with field performance, reproduction records, health records, and possibly genomic information when available.
+            """)
+
+            st.markdown("### 8. Final Breeder-Friendly Conclusion")
+
+            st.markdown("""
+            Pedigree analysis is possible and useful in real breeding programs, but it must be supported by consistent recording and repeated evaluation. 
+            For poultry, the system can be applied faster and is suitable for structured pure-line production. 
+            For cattle, the system is slower but still valuable for preventing inbreeding and supporting selection decisions.
+
+            The safest practical approach is:
+
+            **pedigree recording + performance recording + inbreeding analysis + EBV estimation + mating simulation + regular re-evaluation.**
+
+            This application should be used as a decision-support tool. It helps breeders make better decisions, but final breeding decisions should still consider animal health, fertility, management conditions, and long-term breeding goals.
+            """)
+
+            implementation_summary = pd.DataFrame({
+                "Main Point": [
+                    "Pedigree breeding is possible",
+                    "Poultry is faster",
+                    "Cattle is slower",
+                    "Elite animals are hard to find",
+                    "Recording is essential",
+                    "Mating simulation is important",
+                    "Re-evaluation is required",
+                ],
+                "Conclusion": [
+                    "It can be implemented if records are consistent across generations.",
+                    "Short generation interval and many offspring make poultry suitable for pure-line systems.",
+                    "Long generation interval makes cattle breeding slower and more expensive.",
+                    "Elite status requires high EBV, low inbreeding, good health, and good reproduction.",
+                    "Without accurate sire, dam, and phenotype data, analysis quality decreases.",
+                    "Every mating should be checked before implementation to reduce offspring inbreeding.",
+                    "New offspring data must be added and recalculated every generation.",
+                ],
+            })
+
+            st.download_button(
+                "Download Real-World Implementation Summary CSV",
+                implementation_summary.to_csv(index=False).encode("utf-8"),
+                "real_world_pedigree_implementation_summary.csv",
                 "text/csv",
                 use_container_width=True,
             )
