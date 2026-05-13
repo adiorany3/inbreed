@@ -3853,6 +3853,26 @@ def render_tab_help(title: str, points: list):
 
 
 
+
+def render_footer():
+    """
+    Application footer.
+    """
+    year = pd.Timestamp.now().year
+    st.markdown(f"""
+    <div style="
+        margin-top: 3rem;
+        padding: 1.25rem 0;
+        border-top: 1px solid var(--border-color);
+        text-align: center;
+        color: var(--text-sub);
+        font-size: 0.9rem;
+    ">
+        Developed by <b>Galuh Adi Insani</b> © {year}
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def main():
     favicon_path = pathlib.Path(__file__).parent / "assets" / "favicon.svg"
 
@@ -6079,6 +6099,8 @@ def main():
                 "text/csv",
                 use_container_width=True,
             )
+
+        render_footer()
 
     except Exception as e:
         st.error("The application could not continue because the uploaded data or selected configuration needs correction.")
