@@ -23,15 +23,6 @@ UNKNOWN_VALUES = {
     "unknown", "unknown", "none", "empty",
 }
 
-def main():
-    favicon_path = /assets/favicon.svg
-    st.set_page_config(
-        page_title="Breeding & Inbreeding Analytics",
-        page_icon=str(favicon_path),
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
 def is_unknown(value) -> bool:
     if value is None: return True
     try:
