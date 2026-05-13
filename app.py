@@ -117,21 +117,293 @@ def dampak_inbreeding(percent: float) -> str:
 
 
 def contoh_sapi_lengkap() -> pd.DataFrame:
+    """
+    Ideal full cattle example for demonstrating all breeding management modules.
+
+    This sample includes:
+    - pedigree
+    - sex
+    - age
+    - line
+    - generation
+    - reproductive status
+    - health/defect status
+    - genomic information
+    - economic information
+    - pen/cage/batch/location
+    - multiple performance traits
+    """
     return pd.DataFrame({
         "Animal_ID": [
-            "SIRE_01", "DAM_01", "COW_C", "COW_D", "COW_X",
-            "COW_B", "COW_A", "COW_E", "COW_F"
+            # Founder / G0
+            "BULL_A0", "COW_A0", "BULL_B0", "COW_B0",
+            "BULL_C0", "COW_C0", "BULL_D0", "COW_D0",
+
+            # GGPS / G1
+            "BULL_A1", "COW_A1", "BULL_B1", "COW_B1",
+            "BULL_C1", "COW_C1", "BULL_D1", "COW_D1",
+
+            # GPS / G2
+            "BULL_A2", "COW_A2", "BULL_B2", "COW_B2",
+            "BULL_C2", "COW_C2", "BULL_D2", "COW_D2",
+
+            # PS / G3 controlled line crosses
+            "BULL_AB_PS", "COW_AB_PS", "BULL_CD_PS", "COW_CD_PS",
+
+            # FS / G4 terminal commercial animals
+            "FS_001", "FS_002", "FS_003", "FS_004",
         ],
+
         "Sire_ID": [
-            "-", "-", "SIRE_01", "SIRE_01", "SIRE_01",
-            "COW_D", "COW_B", "COW_B", "COW_D"
+            "-", "-", "-", "-",
+            "-", "-", "-", "-",
+
+            "BULL_A0", "BULL_A0", "BULL_B0", "BULL_B0",
+            "BULL_C0", "BULL_C0", "BULL_D0", "BULL_D0",
+
+            "BULL_A1", "BULL_A1", "BULL_B1", "BULL_B1",
+            "BULL_C1", "BULL_C1", "BULL_D1", "BULL_D1",
+
+            "BULL_A2", "BULL_A2", "BULL_C2", "BULL_C2",
+
+            "BULL_AB_PS", "BULL_AB_PS", "BULL_CD_PS", "BULL_CD_PS",
         ],
+
         "Dam_ID": [
-            "-", "-", "DAM_01", "DAM_01", "DAM_01",
-            "COW_C", "COW_C", "-", "-"
+            "-", "-", "-", "-",
+            "-", "-", "-", "-",
+
+            "COW_A0", "COW_A0", "COW_B0", "COW_B0",
+            "COW_C0", "COW_C0", "COW_D0", "COW_D0",
+
+            "COW_A1", "COW_A1", "COW_B1", "COW_B1",
+            "COW_C1", "COW_C1", "COW_D1", "COW_D1",
+
+            "COW_B2", "COW_B2", "COW_D2", "COW_D2",
+
+            "COW_CD_PS", "COW_CD_PS", "COW_AB_PS", "COW_AB_PS",
         ],
-        "Phenotype": [550, 420, 480, 500, 490, 460, 470, 430, 440],
+
+        "Sex": [
+            "Male", "Female", "Male", "Female",
+            "Male", "Female", "Male", "Female",
+
+            "Male", "Female", "Male", "Female",
+            "Male", "Female", "Male", "Female",
+
+            "Male", "Female", "Male", "Female",
+            "Male", "Female", "Male", "Female",
+
+            "Male", "Female", "Male", "Female",
+
+            "Male", "Female", "Male", "Female",
+        ],
+
+        "Age": [
+            84, 84, 82, 82, 80, 80, 78, 78,
+            60, 60, 58, 58, 56, 56, 54, 54,
+            36, 36, 35, 35, 34, 34, 33, 33,
+            24, 24, 24, 24,
+            12, 12, 12, 12,
+        ],
+
+        "Line": [
+            "Line A", "Line A", "Line B", "Line B",
+            "Line C", "Line C", "Line D", "Line D",
+
+            "Line A", "Line A", "Line B", "Line B",
+            "Line C", "Line C", "Line D", "Line D",
+
+            "Line A", "Line A", "Line B", "Line B",
+            "Line C", "Line C", "Line D", "Line D",
+
+            "Line AB", "Line AB", "Line CD", "Line CD",
+
+            "Line ABCD", "Line ABCD", "Line ABCD", "Line ABCD",
+        ],
+
+        "Generation": [
+            "Founder", "Founder", "Founder", "Founder",
+            "Founder", "Founder", "Founder", "Founder",
+
+            "GGPS", "GGPS", "GGPS", "GGPS",
+            "GGPS", "GGPS", "GGPS", "GGPS",
+
+            "GPS", "GPS", "GPS", "GPS",
+            "GPS", "GPS", "GPS", "GPS",
+
+            "PS", "PS", "PS", "PS",
+
+            "FS", "FS", "FS", "FS",
+        ],
+
+        # Main phenotype used by EBV calculation. Example: adjusted body weight index.
+        "Phenotype": [
+            560, 520, 555, 515, 550, 510, 548, 508,
+            590, 545, 585, 540, 580, 538, 575, 535,
+            610, 560, 605, 558, 600, 555, 598, 552,
+            630, 590, 625, 585,
+            650, 640, 645, 638,
+        ],
+
+        # Multi-trait columns
+        "Body_Weight": [
+            560, 520, 555, 515, 550, 510, 548, 508,
+            590, 545, 585, 540, 580, 538, 575, 535,
+            610, 560, 605, 558, 600, 555, 598, 552,
+            630, 590, 625, 585,
+            650, 640, 645, 638,
+        ],
+        "Growth_Rate": [
+            1.18, 1.10, 1.16, 1.08, 1.15, 1.07, 1.14, 1.06,
+            1.25, 1.16, 1.23, 1.15, 1.22, 1.14, 1.20, 1.13,
+            1.30, 1.20, 1.28, 1.19, 1.27, 1.18, 1.26, 1.17,
+            1.34, 1.25, 1.32, 1.24,
+            1.38, 1.34, 1.36, 1.33,
+        ],
+        "Fertility": [
+            88, 90, 87, 89, 86, 88, 85, 87,
+            91, 92, 90, 91, 89, 90, 88, 89,
+            93, 94, 92, 93, 91, 92, 90, 91,
+            94, 95, 93, 94,
+            0, 0, 0, 0,
+        ],
+        "Survival_Rate": [
+            96, 97, 96, 97, 95, 96, 95, 96,
+            97, 98, 97, 98, 96, 97, 96, 97,
+            98, 98, 98, 98, 97, 98, 97, 98,
+            98, 99, 98, 99,
+            99, 99, 99, 99,
+        ],
+        "Feed_Efficiency": [
+            1.70, 1.75, 1.72, 1.76, 1.74, 1.78, 1.75, 1.79,
+            1.62, 1.68, 1.64, 1.69, 1.65, 1.70, 1.66, 1.71,
+            1.58, 1.64, 1.59, 1.65, 1.60, 1.66, 1.61, 1.67,
+            1.55, 1.60, 1.56, 1.61,
+            1.52, 1.54, 1.53, 1.55,
+        ],
+
+        # Reproductive and health status
+        "Reproductive_Status": [
+            "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready",
+            "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready",
+            "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready", "Ready",
+            "Ready", "Ready", "Ready", "Ready",
+            "Terminal", "Terminal", "Terminal", "Terminal",
+        ],
+        "Health_Status": [
+            "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy",
+            "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy",
+            "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy", "Healthy",
+            "Healthy", "Healthy", "Healthy", "Healthy",
+            "Healthy", "Healthy", "Healthy", "Healthy",
+        ],
+        "Defect_Status": [
+            "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear",
+            "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear",
+            "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear", "Clear",
+            "Clear", "Clear", "Clear", "Clear",
+            "Clear", "Clear", "Clear", "Clear",
+        ],
+        "Culling_Reason": ["-"] * 32,
+
+        # Genomic support
+        "Genomic_EBV": [
+            8.2, 6.5, 7.9, 6.2, 7.6, 6.0, 7.4, 5.8,
+            10.5, 8.4, 10.1, 8.1, 9.8, 7.9, 9.5, 7.7,
+            12.2, 9.6, 11.8, 9.4, 11.5, 9.1, 11.2, 8.9,
+            13.6, 11.0, 13.1, 10.7,
+            14.5, 13.9, 14.2, 13.7,
+        ],
+        "Genomic_Reliability": [
+            72, 70, 71, 69, 70, 68, 69, 67,
+            78, 76, 77, 75, 76, 74, 75, 73,
+            84, 82, 83, 81, 82, 80, 81, 79,
+            88, 86, 87, 85,
+            80, 80, 80, 80,
+        ],
+
+        # Economic support
+        "Feed_Cost": [
+            420, 390, 415, 388, 410, 385, 408, 382,
+            450, 420, 445, 418, 440, 415, 438, 412,
+            480, 445, 475, 442, 470, 438, 468, 435,
+            500, 465, 495, 460,
+            520, 515, 518, 512,
+        ],
+        "Production_Value": [
+            760, 710, 750, 705, 745, 700, 740, 695,
+            830, 780, 820, 775, 815, 770, 810, 765,
+            900, 840, 890, 835, 880, 830, 875, 825,
+            960, 900, 950, 890,
+            1020, 1005, 1015, 1000,
+        ],
+        "Replacement_Cost": [
+            120, 115, 120, 115, 118, 114, 118, 114,
+            130, 125, 130, 125, 128, 123, 128, 123,
+            140, 135, 140, 135, 138, 133, 138, 133,
+            150, 145, 150, 145,
+            0, 0, 0, 0,
+        ],
+        "Culling_Value": [
+            220, 200, 218, 198, 215, 195, 212, 192,
+            240, 220, 238, 218, 235, 215, 232, 212,
+            260, 240, 258, 238, 255, 235, 252, 232,
+            280, 260, 278, 258,
+            300, 295, 298, 292,
+        ],
+
+        # Location / batch management
+        "Farm": ["Demo Breeding Farm"] * 32,
+        "House": [
+            "Nucleus", "Nucleus", "Nucleus", "Nucleus", "Nucleus", "Nucleus", "Nucleus", "Nucleus",
+            "GGPS", "GGPS", "GGPS", "GGPS", "GGPS", "GGPS", "GGPS", "GGPS",
+            "GPS", "GPS", "GPS", "GPS", "GPS", "GPS", "GPS", "GPS",
+            "PS", "PS", "PS", "PS",
+            "Commercial", "Commercial", "Commercial", "Commercial",
+        ],
+        "Pen": [
+            "A01", "A02", "B01", "B02", "C01", "C02", "D01", "D02",
+            "A11", "A12", "B11", "B12", "C11", "C12", "D11", "D12",
+            "A21", "A22", "B21", "B22", "C21", "C22", "D21", "D22",
+            "AB31", "AB32", "CD31", "CD32",
+            "FS41", "FS42", "FS43", "FS44",
+        ],
+        "Cage": [
+            "Cage-01", "Cage-02", "Cage-03", "Cage-04", "Cage-05", "Cage-06", "Cage-07", "Cage-08",
+            "Cage-11", "Cage-12", "Cage-13", "Cage-14", "Cage-15", "Cage-16", "Cage-17", "Cage-18",
+            "Cage-21", "Cage-22", "Cage-23", "Cage-24", "Cage-25", "Cage-26", "Cage-27", "Cage-28",
+            "Cage-31", "Cage-32", "Cage-33", "Cage-34",
+            "Cage-41", "Cage-42", "Cage-43", "Cage-44",
+        ],
+        "Batch": [
+            "Batch-F0", "Batch-F0", "Batch-F0", "Batch-F0", "Batch-F0", "Batch-F0", "Batch-F0", "Batch-F0",
+            "Batch-GGPS", "Batch-GGPS", "Batch-GGPS", "Batch-GGPS", "Batch-GGPS", "Batch-GGPS", "Batch-GGPS", "Batch-GGPS",
+            "Batch-GPS", "Batch-GPS", "Batch-GPS", "Batch-GPS", "Batch-GPS", "Batch-GPS", "Batch-GPS", "Batch-GPS",
+            "Batch-PS", "Batch-PS", "Batch-PS", "Batch-PS",
+            "Batch-FS", "Batch-FS", "Batch-FS", "Batch-FS",
+        ],
+        "Responsible_Person": ["Breeding Manager"] * 32,
+        "Mating_Date": [
+            "-", "-", "-", "-", "-", "-", "-", "-",
+            "2024-01-10", "2024-01-10", "2024-01-12", "2024-01-12",
+            "2024-01-14", "2024-01-14", "2024-01-16", "2024-01-16",
+            "2025-02-10", "2025-02-10", "2025-02-12", "2025-02-12",
+            "2025-02-14", "2025-02-14", "2025-02-16", "2025-02-16",
+            "2026-03-10", "2026-03-10", "2026-03-12", "2026-03-12",
+            "2026-05-01", "2026-05-01", "2026-05-02", "2026-05-02",
+        ],
+        "Expected_Offspring_Date": [
+            "-", "-", "-", "-", "-", "-", "-", "-",
+            "2024-10-10", "2024-10-10", "2024-10-12", "2024-10-12",
+            "2024-10-14", "2024-10-14", "2024-10-16", "2024-10-16",
+            "2025-11-10", "2025-11-10", "2025-11-12", "2025-11-12",
+            "2025-11-14", "2025-11-14", "2025-11-16", "2025-11-16",
+            "2026-12-10", "2026-12-10", "2026-12-12", "2026-12-12",
+            "2027-02-01", "2027-02-01", "2027-02-02", "2027-02-02",
+        ],
     })
+
 
 
 def calculate_selection_response(h2: float, sd_p: float, intensity: float) -> float:
@@ -194,6 +466,7 @@ def standardize_input(
     line_col=None,
     generation_col=None,
     trait_cols=None,
+    extra_metadata_cols=None,
 ):
     """
     Standardizes uploaded data into required pedigree columns and optional breeding metadata.
@@ -210,8 +483,10 @@ def standardize_input(
     - Line
     - Generation
     - Additional numeric trait columns for Multi-Trait Selection Index
+    - Advanced metadata columns for breeding management modules
     """
     trait_cols = trait_cols or []
+    extra_metadata_cols = extra_metadata_cols or {}
 
     selected = []
     output_names = []
@@ -230,6 +505,9 @@ def standardize_input(
     add_col(line_col, "Line")
     add_col(generation_col, "Generation")
 
+    for output_col, source_col in extra_metadata_cols.items():
+        add_col(source_col, output_col)
+
     for trait_col in trait_cols:
         if trait_col and trait_col != "-" and trait_col in raw_df.columns:
             safe_name = f"Trait_{str(trait_col).strip().replace(' ', '_')}"
@@ -244,14 +522,16 @@ def standardize_input(
         if col in df.columns:
             df[col] = df[col].apply(clean_id)
 
-    if "Sex" in df.columns:
-        df["Sex"] = df["Sex"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
+    text_meta_cols = [
+        "Sex", "Line", "Generation", "Birth_Date", "Reproductive_Status",
+        "Health_Status", "Defect_Status", "Culling_Reason", "Farm",
+        "House", "Pen", "Cage", "Group", "Batch", "Mating_Date",
+        "Expected_Offspring_Date", "Responsible_Person", "Survival_Status"
+    ]
 
-    if "Line" in df.columns:
-        df["Line"] = df["Line"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
-
-    if "Generation" in df.columns:
-        df["Generation"] = df["Generation"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
+    for col in text_meta_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
 
     df = df.dropna(subset=["Animal_ID"]).copy()
 
@@ -545,20 +825,12 @@ def show_input_validation_messages(validation_result: Dict):
 
     with st.expander("Correct Data Writing Rules", expanded=False):
         st.markdown("""
-        **Required columns**
-        - `Animal_ID`: unique livestock ID. Must not be empty and must not be duplicated.
-        - `Sire_ID`: sire/father ID. Use `-` if unknown.
-        - `Dam_ID`: dam/mother ID. Use `-` if unknown.
-        - `Phenotype` *(optional)*: numeric performance value, such as body weight, milk yield, growth rate, or fertility score.
-
-        **Data writing rules**
-        1. Do not use the same `Animal_ID` more than once.
-        2. An animal cannot be listed as its own `Sire_ID` or `Dam_ID`.
-        3. Avoid using the same ID for `Sire_ID` and `Dam_ID`.
-        4. Use consistent spelling for every ID. Example: `BULL_01` should not also be written as `Bull01`.
-        5. Use `-` for unknown sire or dam.
-        6. If `Phenotype` is selected, write numeric values only, for example `450`, `520.5`, or `1200`.
-        7. Avoid pedigree cycles. Example: if A is the parent of B, B cannot also be the parent or ancestor of A.
+        **Main Data Writing Rules**
+        - `Animal_ID` must be unique and must not be empty.
+        - Use `-` for unknown `Sire_ID` or `Dam_ID`.
+        - An animal cannot be listed as its own sire or dam.
+        - If using `Phenotype` or other traits, use numeric values only.
+        - Avoid pedigree cycles, for example A is a parent of B but B is also an ancestor of A.
         """)
 
 
@@ -572,22 +844,18 @@ def merge_optional_metadata(std_df: pd.DataFrame, res_df: pd.DataFrame) -> pd.Da
         if col not in ["Sire_ID", "Dam_ID", "Phenotype"]
     ]
 
-    optional_cols = [
-        col for col in optional_cols
-        if col == "Animal_ID" or col in ["Sex", "Age", "Line", "Generation"] or col.startswith("Trait_")
-    ]
-
     if not optional_cols or "Animal_ID" not in optional_cols:
         return res_df
 
     meta_df = std_df[optional_cols].copy()
     out = res_df.merge(meta_df, on="Animal_ID", how="left", suffixes=("", "_meta"))
 
-    for col in ["Sex", "Age", "Line", "Generation"]:
-        if col in out.columns:
+    for col in optional_cols:
+        if col != "Animal_ID" and col in out.columns and not col.startswith("Trait_"):
             out[col] = out[col].apply(lambda x: EMPTY if is_unknown(x) else str(x).strip())
 
     return out
+
 
 
 def normalize_sex_value(value: str) -> Optional[str]:
@@ -600,13 +868,13 @@ def normalize_sex_value(value: str) -> Optional[str]:
     text = str(value).strip().lower()
 
     male_values = {
-        "m", "male", "jantan", "pejantan", "sire", "bull", "rooster", "cock",
-        "l", "laki", "laki-laki", "ayam jantan"
+        "m", "male", "male", "pemale", "sire", "bull", "rooster", "cock",
+        "l", "laki", "laki-laki", "ayam male"
     }
 
     female_values = {
-        "f", "female", "betina", "induk", "dam", "cow", "hen",
-        "p", "perempuan", "ayam betina"
+        "f", "female", "female", "dam", "dam", "cow", "hen",
+        "p", "perempuan", "ayam female"
     }
 
     if text in male_values:
@@ -2983,6 +3251,117 @@ def generate_breeder_summary_pdf(
     return buffer
 
 
+
+def create_sample_excel_download() -> bytes:
+    """
+    Creates an XLSX file from the built-in Full Cattle Example sample.
+    This allows users to download the sample directly from the application.
+    """
+    buffer = io.BytesIO()
+
+    sample_df = contoh_sapi_lengkap()
+
+    rules_df = pd.DataFrame({
+        "Rule Category": [
+            "Required Column",
+            "Required Column",
+            "Required Column",
+            "Sex",
+            "Age",
+            "Line",
+            "Generation",
+            "Phenotype",
+            "Multi-Trait",
+            "Health",
+            "Reproductive Status",
+            "FS Rule",
+            "Missing Parent",
+            "Avoid",
+        ],
+        "Rule / Explanation": [
+            "Animal_ID must be unique and not empty.",
+            "Sire_ID is the sire/father. Use '-' if unknown.",
+            "Dam_ID is the dam/mother. Use '-' if unknown.",
+            "Use Male/Female, Male/Female, M/F, or L/P.",
+            "Use a numeric value. Unit depends on your species/project.",
+            "Use consistent line names such as Line A, Line B, Line C, Line D.",
+            "Use values such as Founder, GGPS, GPS, PS, FS, G0, G1, G2.",
+            "Use numeric values only. This column is used for basic EBV calculation.",
+            "Body_Weight, Growth_Rate, Fertility, Survival_Rate, and Feed_Efficiency can be selected for Multi-Trait Selection Index.",
+            "Use Health_Status and Defect_Status to prevent unhealthy animals from being recommended.",
+            "Use Ready, Pregnant, Terminal, Infertile, Hold, or other clear labels.",
+            "FS is terminal stock and should not be used as breeding nucleus.",
+            "Parent IDs not found as Animal_ID will be treated as additional founders.",
+            "Do not duplicate Animal_ID. Do not make an animal its own parent.",
+        ],
+    })
+
+    mapping_df = pd.DataFrame({
+        "Application Mapping": [
+            "Animal_ID Column",
+            "Sire_ID Column",
+            "Dam_ID Column",
+            "Phenotype Column",
+            "Sex Column",
+            "Age Column",
+            "Line Column",
+            "Generation Column",
+            "Additional Trait Columns",
+            "Reproductive Status Column",
+            "Health Status Column",
+            "Defect Status Column",
+            "Culling Reason Column",
+            "Pen Column",
+            "Cage Column",
+            "Batch Column",
+            "Mating Date Column",
+            "Expected Offspring Date Column",
+            "Responsible Person Column",
+            "Genomic EBV Column",
+            "Genomic Reliability Column",
+            "Feed Cost Column",
+            "Production Value Column",
+            "Replacement Cost Column",
+            "Culling Value Column",
+        ],
+        "Select This Column": [
+            "Animal_ID",
+            "Sire_ID",
+            "Dam_ID",
+            "Phenotype",
+            "Sex",
+            "Age",
+            "Line",
+            "Generation",
+            "Body_Weight, Growth_Rate, Fertility, Survival_Rate, Feed_Efficiency",
+            "Reproductive_Status",
+            "Health_Status",
+            "Defect_Status",
+            "Culling_Reason",
+            "Pen",
+            "Cage",
+            "Batch",
+            "Mating_Date",
+            "Expected_Offspring_Date",
+            "Responsible_Person",
+            "Genomic_EBV",
+            "Genomic_Reliability",
+            "Feed_Cost",
+            "Production_Value",
+            "Replacement_Cost",
+            "Culling_Value",
+        ],
+    })
+
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        sample_df.to_excel(writer, index=False, sheet_name="Pedigree_Data")
+        rules_df.to_excel(writer, index=False, sheet_name="Data_Rules")
+        mapping_df.to_excel(writer, index=False, sheet_name="Column_Mapping")
+
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def apply_custom_css():
     st.markdown("""
         <style>
@@ -3020,9 +3399,9 @@ def apply_custom_css():
 
         .custom-header {
             background: var(--header-gradient);
-            padding: 3rem 2rem;
+            padding: 2rem 2rem;
             border-radius: 0 0 2rem 2rem;
-            margin: -6rem -4rem 3rem -4rem;
+            margin: -5rem -4rem 2rem -4rem;
             color: white !important;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
             text-align: center;
@@ -3035,7 +3414,7 @@ def apply_custom_css():
         .info-card {
             background: var(--card-bg) !important;
             color: var(--text-main) !important;
-            padding: 1.5rem;
+            padding: 1rem;
             border-radius: 1rem;
             border-left: 5px solid var(--accent-primary);
             border: 1px solid var(--border-color);
@@ -3075,6 +3454,358 @@ def render_header():
 
 
 
+
+def parse_numeric_series(df: pd.DataFrame, col: str) -> pd.Series:
+    if col not in df.columns:
+        return pd.Series([np.nan] * len(df), index=df.index)
+    return pd.to_numeric(df[col], errors="coerce")
+
+
+def evaluate_age_eligibility(result_df: pd.DataFrame, min_age: float, max_age: float) -> pd.DataFrame:
+    """
+    Uses optional Age column to classify breeding age eligibility.
+    """
+    df = result_df.copy()
+
+    if "Age" not in df.columns:
+        df["Age_Eligibility"] = "Age data not available"
+        return df
+
+    ages = pd.to_numeric(df["Age"], errors="coerce")
+
+    def classify(age):
+        if pd.isna(age):
+            return "Age data not available"
+        if age < min_age:
+            return "Too Young"
+        if age <= max_age:
+            return "Ready / Productive"
+        return "Old / Replace Soon"
+
+    df["Age_Eligibility"] = ages.apply(classify)
+    return df
+
+
+def evaluate_reproductive_status(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Uses optional reproductive columns to classify reproductive readiness.
+    """
+    df = result_df.copy()
+
+    if "Reproductive_Status" not in df.columns:
+        df["Reproductive_Decision"] = "Reproductive data not available"
+        return df
+
+    def classify(value):
+        if is_unknown(value):
+            return "Reproductive data not available"
+        text = str(value).lower()
+        bad = ["infertile", "sterile", "culled", "not ready", "too young", "old", "abnormal", "failed"]
+        hold = ["pregnant", "incubating", "recovering", "rest", "treatment"]
+        good = ["ready", "fertile", "active", "productive", "laying", "breeding"]
+
+        if any(k in text for k in bad):
+            return "Do Not Breed"
+        if any(k in text for k in hold):
+            return "Hold / Monitor"
+        if any(k in text for k in good):
+            return "Ready for Breeding"
+        return "Check Reproductive Status"
+
+    df["Reproductive_Decision"] = df["Reproductive_Status"].apply(classify)
+    return df
+
+
+def evaluate_health_and_defect(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Uses optional health and defect records to flag animals that should not be used as breeding stock.
+    """
+    df = result_df.copy()
+
+    def health_decision(row):
+        health = str(row.get("Health_Status", "")).lower()
+        defect = str(row.get("Defect_Status", "")).lower()
+        culling = str(row.get("Culling_Reason", "")).lower()
+
+        severe_words = [
+            "defect", "deform", "lame", "chronic", "disease", "sick",
+            "blind", "weak", "abnormal", "culled", "dead", "mortality",
+            "reproductive disorder", "not for breeding"
+        ]
+
+        if any(k in health for k in severe_words) or any(k in defect for k in severe_words) or any(k in culling for k in severe_words):
+            return "Do Not Breed - Health/Defect Risk"
+
+        if health.strip() in ["", "-", "nan", "none"] and defect.strip() in ["", "-", "nan", "none"]:
+            return "Health data not available"
+
+        if "healthy" in health or "normal" in health or "clear" in defect:
+            return "Health OK"
+
+        return "Check Health Record"
+
+    df["Health_Defect_Decision"] = df.apply(health_decision, axis=1)
+    return df
+
+
+def calculate_ebv_reliability(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Simple EBV reliability proxy based on data completeness and progeny count.
+    This is not a formal BLUP reliability, but it helps breeders know whether EBV is supported by enough data.
+    """
+    df = result_df.copy()
+
+    child_counts = {}
+    for _, row in df.iterrows():
+        for parent_col in ["Sire_ID", "Dam_ID"]:
+            parent = row.get(parent_col)
+            if not is_unknown(parent):
+                child_counts[str(parent)] = child_counts.get(str(parent), 0) + 1
+
+    def score(row):
+        s = 0
+        if not is_unknown(row.get("Sire_ID")):
+            s += 20
+        if not is_unknown(row.get("Dam_ID")):
+            s += 20
+        if not is_unknown(row.get("Phenotype")):
+            s += 20
+        if not is_unknown(row.get("Sex")):
+            s += 10
+        if not is_unknown(row.get("Generation")):
+            s += 10
+        progeny = child_counts.get(str(row.get("Animal_ID")), 0)
+        s += min(20, progeny * 5)
+        return min(100, s)
+
+    df["EBV_Reliability_%"] = df.apply(score, axis=1)
+
+    def grade(v):
+        if v >= 80:
+            return "High"
+        if v >= 50:
+            return "Medium"
+        return "Low"
+
+    df["EBV_Reliability_Level"] = df["EBV_Reliability_%"].apply(grade)
+    return df
+
+
+def apply_genomic_support(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds genomic support when optional genomic columns are available.
+    """
+    df = result_df.copy()
+
+    if "Genomic_EBV" not in df.columns:
+        df["Genomic_Status"] = "Genomic data not available"
+        df["Combined_Genetic_Value"] = pd.to_numeric(df.get("EBV", 0), errors="coerce").fillna(0)
+        return df
+
+    ebv = pd.to_numeric(df.get("EBV", 0), errors="coerce").fillna(0)
+    gebv = pd.to_numeric(df["Genomic_EBV"], errors="coerce")
+
+    if "Genomic_Reliability" in df.columns:
+        grel = pd.to_numeric(df["Genomic_Reliability"], errors="coerce").fillna(50) / 100
+        grel = grel.clip(0, 1)
+    else:
+        grel = pd.Series([0.5] * len(df), index=df.index)
+
+    df["Combined_Genetic_Value"] = ((1 - grel) * ebv + grel * gebv.fillna(ebv)).round(4)
+    df["Genomic_Status"] = np.where(gebv.notna(), "Genomic data used", "Genomic data missing")
+    return df
+
+
+def calculate_generation_trend(result_df: pd.DataFrame) -> pd.DataFrame:
+    if "Generation" not in result_df.columns:
+        return pd.DataFrame()
+
+    df = result_df.copy()
+    df = df[~df["Generation"].apply(is_unknown)].copy()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    trend = df.groupby("Generation").agg(
+        Total=("Animal_ID", "count"),
+        Average_F=("Inbreeding_%", "mean"),
+        Average_EBV=("EBV", "mean"),
+        Average_Selection_Index=("Selection_Index", "mean") if "Selection_Index" in df.columns else ("EBV", "mean"),
+        Elite_Count=("Classification", lambda x: int((x == "Elite Stock").sum())),
+        Warning_Count=("Reproduction_Warning", lambda x: int((x.astype(str) != "").sum())),
+    ).reset_index()
+
+    return trend.round(4)
+
+
+def calculate_line_performance(result_df: pd.DataFrame) -> pd.DataFrame:
+    if "Line" not in result_df.columns:
+        return pd.DataFrame()
+
+    df = result_df.copy()
+    df = df[~df["Line"].apply(is_unknown)].copy()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    line = df.groupby("Line").agg(
+        Total=("Animal_ID", "count"),
+        Average_F=("Inbreeding_%", "mean"),
+        Average_EBV=("EBV", "mean"),
+        Average_Selection_Index=("Selection_Index", "mean") if "Selection_Index" in df.columns else ("EBV", "mean"),
+        Elite_Count=("Classification", lambda x: int((x == "Elite Stock").sum())),
+        Final_Stock_Count=("Classification", lambda x: int((x.astype(str).str.contains("Final Stock", case=False, na=False)).sum())),
+    ).reset_index()
+
+    def line_recommendation(row):
+        if row["Average_F"] >= 12.5:
+            return "Reduce inbreeding / introduce unrelated genetics"
+        if row["Average_Selection_Index"] >= line["Average_Selection_Index"].quantile(0.75):
+            return "Priority line for selection"
+        if row["Average_EBV"] >= line["Average_EBV"].mean():
+            return "Good line, maintain and monitor"
+        return "Use carefully or improve through selection"
+
+    line["Line_Recommendation"] = line.apply(line_recommendation, axis=1)
+    return line.round(4)
+
+
+def calculate_economic_projection(result_df: pd.DataFrame) -> pd.DataFrame:
+    df = result_df.copy()
+
+    has_any = any(col in df.columns for col in ["Feed_Cost", "Production_Value", "Replacement_Cost", "Culling_Value"])
+    if not has_any:
+        df["Expected_Profit"] = np.nan
+        df["Economic_Status"] = "Economic data not available"
+        return df
+
+    production = parse_numeric_series(df, "Production_Value").fillna(0)
+    feed = parse_numeric_series(df, "Feed_Cost").fillna(0)
+    replacement = parse_numeric_series(df, "Replacement_Cost").fillna(0)
+    culling = parse_numeric_series(df, "Culling_Value").fillna(0)
+
+    df["Expected_Profit"] = (production + culling - feed - replacement).round(4)
+
+    def econ_status(v):
+        if pd.isna(v):
+            return "Economic data not available"
+        if v > 0:
+            return "Positive projected value"
+        if v == 0:
+            return "Neutral projected value"
+        return "Negative projected value"
+
+    df["Economic_Status"] = df["Expected_Profit"].apply(econ_status)
+    return df
+
+
+def assign_final_breeding_decision(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Produces a practical breeder-friendly decision label.
+    """
+    df = result_df.copy()
+
+    def decision(row):
+        classification = str(row.get("Classification", ""))
+        f = float(row.get("Inbreeding_%", 0))
+        ebv = float(row.get("EBV", 0))
+        age_decision = str(row.get("Age_Eligibility", ""))
+        repro = str(row.get("Reproductive_Decision", ""))
+        health = str(row.get("Health_Defect_Decision", ""))
+        gen = str(row.get("Generation", "")).upper()
+        warning = str(row.get("Reproduction_Warning", ""))
+
+        if "Do Not Breed" in health:
+            return "Do Not Breed - Health/Defect"
+        if "Do Not Breed" in repro:
+            return "Do Not Breed - Reproductive"
+        if gen == "FS":
+            return "Terminal FS Only"
+        if warning:
+            return "Do Not Breed - Relationship Warning"
+        if f >= 25:
+            return "Cull / Commercial Only"
+        if "Too Young" in age_decision:
+            return "Hold - Too Young"
+        if "Old" in age_decision:
+            return "Replace Soon"
+        if classification == "Elite Stock" and ebv > 0 and f < 6.25:
+            return "Use as Elite Breeder"
+        if classification == "Breeding Stock" and f < 6.25:
+            return "Use as Replacement Breeder"
+        if f < 12.5 and ebv > 0:
+            return "Use with Monitoring"
+        if "Final Stock" in classification:
+            return "Commercial / Slaughter Only"
+        return "Need More Data"
+
+    df["Final_Breeding_Decision"] = df.apply(decision, axis=1)
+    return df
+
+
+def generate_next_generation_ids(prefix: str, generation: str, count: int) -> pd.DataFrame:
+    rows = []
+    for i in range(1, int(count) + 1):
+        rows.append({
+            "Proposed_Offspring_ID": f"{prefix}_{generation}_{i:04d}",
+            "Generation": generation,
+            "Status": "Reserved ID"
+        })
+    return pd.DataFrame(rows)
+
+
+def build_mating_calendar(pair_df: pd.DataFrame, start_date, interval_days: int = 7, expected_days: int = 21) -> pd.DataFrame:
+    if pair_df.empty:
+        return pd.DataFrame()
+
+    start = pd.to_datetime(start_date)
+    rows = []
+    for i, row in pair_df.head(20).iterrows():
+        mating_date = start + pd.Timedelta(days=int(i) * interval_days)
+        expected_date = mating_date + pd.Timedelta(days=expected_days)
+        rows.append({
+            "Mating_ID": f"MATE_{i+1:04d}",
+            "Male_Sire": row.get("Suggested_Sire"),
+            "Female_Dam": row.get("Suggested_Dam"),
+            "Mating_Date": mating_date.strftime("%Y-%m-%d"),
+            "Expected_Offspring_Date": expected_date.strftime("%Y-%m-%d"),
+            "Predicted_Offspring_F_%": row.get("Predicted_Offspring_F_%"),
+            "Expected_Offspring_EBV": row.get("Expected_Offspring_EBV"),
+            "Decision": row.get("Decision"),
+            "Rule_Status": row.get("Mating_Rule_Status", "-"),
+        })
+    return pd.DataFrame(rows)
+
+
+def summarize_missing_advanced_columns(result_df: pd.DataFrame) -> pd.DataFrame:
+    recommended = {
+        "Age": "Age eligibility and replacement planning",
+        "Reproductive_Status": "Reproductive readiness and fertility screening",
+        "Health_Status": "Health-based breeding exclusion",
+        "Defect_Status": "Defect and abnormality filtering",
+        "Line": "Line comparison and pure-line control",
+        "Generation": "Generation trend and FS terminal-stock control",
+        "Birth_Date": "Age tracking and generation management",
+        "Mating_Date": "Breeding calendar",
+        "Pen": "Pen/cage/location management",
+        "Batch": "Batch management",
+        "Genomic_EBV": "Genomic selection support",
+        "Genomic_Reliability": "Genomic confidence weighting",
+        "Feed_Cost": "Economic projection",
+        "Production_Value": "Economic projection",
+        "Culling_Value": "Economic projection",
+    }
+
+    rows = []
+    for col, purpose in recommended.items():
+        rows.append({
+            "Recommended Column": col,
+            "Status": "Available" if col in result_df.columns else "Not available in current sample",
+            "Purpose": purpose,
+        })
+    return pd.DataFrame(rows)
+
+
 def render_section_header(title: str, description: str = "", icon: str = "📌"):
     """
     Consistent section header for better readability.
@@ -3096,37 +3827,30 @@ def render_small_note(text: str):
 
 def render_workflow_overview():
     """
-    Shows the main workflow of the application.
+    Shows a compact workflow of the application.
     """
     st.markdown("""
     <div class="info-card">
-        <b>Recommended Workflow</b>
+        <b>Brief Workflow</b>
         <ol>
-            <li><b>Upload & Map Data:</b> choose Animal_ID, Sire_ID, Dam_ID, phenotype, and optional metadata.</li>
-            <li><b>Check Data Quality:</b> review completeness, warnings, and recording quality.</li>
-            <li><b>Read Dashboard:</b> understand population size, EBV, inbreeding, and classification.</li>
-            <li><b>Explore Pedigree:</b> inspect family graph, high-risk animals, and relationship matrix.</li>
-            <li><b>Simulate Mating:</b> choose safe male-female combinations before breeding.</li>
-            <li><b>Plan Pure Lines:</b> simulate GGPS, GPS, PS, and FS structure when needed.</li>
-            <li><b>Download Report:</b> export breeder-friendly PDF for documentation.</li>
+            <li><b>Input:</b> choose a sample or upload a file, then map the required columns.</li>
+            <li><b>Validation:</b> check data quality, pedigree completeness, and metadata.</li>
+            <li><b>Analysis:</b> review the dashboard, pedigree, relationship matrix, mating, and pure-line modules.</li>
+            <li><b>Output:</b> download the PDF report, visualization, mating calendar, or next-generation template.</li>
         </ol>
     </div>
     """, unsafe_allow_html=True)
 
 
+
 def render_tab_help(title: str, points: list):
     """
-    Compact explanation block for each tab.
+    Collapsible explanation block for each tab to avoid visual redundancy.
     """
-    bullet_html = "".join([f"<li>{point}</li>" for point in points])
-    st.markdown(f"""
-    <div class="info-card" style="border-left: 5px solid #64748b;">
-        <b>{title}</b>
-        <ul style="margin-bottom:0;">
-            {bullet_html}
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander(f"Guide: {title}", expanded=False):
+        for point in points:
+            st.write(f"- {point}")
+
 
 
 def main():
@@ -3144,23 +3868,14 @@ def main():
     apply_custom_css()
     render_header()
 
-    with st.expander("📌 Application Workflow Overview", expanded=False):
-        render_workflow_overview()
-
     with st.sidebar:
         st.markdown("## 🧭 Application Setup")
 
-        with st.expander("How to use this software", expanded=False):
+        with st.expander("Quick Guide", expanded=False):
+            render_workflow_overview()
             st.markdown("""
-            **Main workflow:**
-            1. Select sample data or upload your own file.
-            2. Map required columns.
-            3. Add optional metadata such as Sex, Age, Line, and Generation.
-            4. Select traits and weights if using Multi-Trait Selection Index.
-            5. Review dashboard, mating plan, pure-line plan, and PDF report.
-
-            **Required columns:** `Animal_ID`, `Sire_ID`, `Dam_ID`  
-            **Recommended columns:** `Sex`, `Age`, `Line`, `Generation`, `Phenotype`
+            **Required:** `Animal_ID`, `Sire_ID`, `Dam_ID`  
+            **Recommended:** `Sex`, `Age`, `Line`, `Generation`, `Phenotype`
             """)
 
         st.markdown("### 1. Data Source")
@@ -3171,18 +3886,21 @@ def main():
             help="Use sample data to learn how the system works or upload your own CSV/Excel file.",
         )
 
+        st.download_button(
+            "Download Full Cattle Example XLSX",
+            data=create_sample_excel_download(),
+            file_name="full_cattle_example.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            help="Download the built-in ideal cattle pedigree sample in Excel format."
+        )
+
         with st.expander("Required Data Format", expanded=False):
             st.markdown("""
-            Please make sure your CSV or Excel file contains the following columns:
+            **Required columns:** `Animal_ID`, `Sire_ID`, `Dam_ID`  
+            **Optional but recommended:** `Phenotype`, `Sex`, `Age`, `Line`, `Generation`
 
-            - `Animal_ID`: unique livestock identification code.
-            - `Sire_ID`: sire or father identification code.
-            - `Dam_ID`: dam or mother identification code.
-            - `Phenotype` *(optional)*: performance value for EBV calculation, such as body weight, milk yield, growth rate, or fertility score.
-
-            Use `-` if sire or dam information is unknown.
-
-            A more complete pedigree record will produce a more accurate inbreeding coefficient, relationship matrix, and breeding recommendation.
+            Use `-` for unknown sire/dam. Keep every `Animal_ID` unique.
             """)
 
         if mode == "Full cattle example":
@@ -3222,7 +3940,7 @@ def main():
             "Sex Column - Optional",
             ["-"] + cols,
             index=cols.index("Sex") + 1 if "Sex" in cols else 0,
-            help="Use values such as Male/Female, Jantan/Betina, M/F, L/P."
+            help="Use values such as Male/Female, Male/Female, M/F, L/P."
         )
         age_col = st.selectbox(
             "Age Column - Optional",
@@ -3248,15 +3966,57 @@ def main():
         line_val = None if line_col == "-" else line_col
         generation_val = None if generation_col == "-" else generation_col
 
+        with st.expander("Advanced Optional Columns", expanded=False):
+            st.caption("Map these columns only if they exist. If not available, the advanced modules will show guidance instead of errors.")
+
+            birth_date_col = st.selectbox("Birth Date Column", ["-"] + cols, index=cols.index("Birth_Date") + 1 if "Birth_Date" in cols else 0)
+            reproductive_col = st.selectbox("Reproductive Status Column", ["-"] + cols, index=cols.index("Reproductive_Status") + 1 if "Reproductive_Status" in cols else 0)
+            health_col = st.selectbox("Health Status Column", ["-"] + cols, index=cols.index("Health_Status") + 1 if "Health_Status" in cols else 0)
+            defect_col = st.selectbox("Defect Status Column", ["-"] + cols, index=cols.index("Defect_Status") + 1 if "Defect_Status" in cols else 0)
+            culling_reason_col = st.selectbox("Culling Reason Column", ["-"] + cols, index=cols.index("Culling_Reason") + 1 if "Culling_Reason" in cols else 0)
+            pen_col = st.selectbox("Pen Column", ["-"] + cols, index=cols.index("Pen") + 1 if "Pen" in cols else 0)
+            cage_col = st.selectbox("Cage Column", ["-"] + cols, index=cols.index("Cage") + 1 if "Cage" in cols else 0)
+            batch_col = st.selectbox("Batch Column", ["-"] + cols, index=cols.index("Batch") + 1 if "Batch" in cols else 0)
+            mating_date_col = st.selectbox("Mating Date Column", ["-"] + cols, index=cols.index("Mating_Date") + 1 if "Mating_Date" in cols else 0)
+            expected_date_col = st.selectbox("Expected Offspring Date Column", ["-"] + cols, index=cols.index("Expected_Offspring_Date") + 1 if "Expected_Offspring_Date" in cols else 0)
+            responsible_col = st.selectbox("Responsible Person Column", ["-"] + cols, index=cols.index("Responsible_Person") + 1 if "Responsible_Person" in cols else 0)
+            genomic_ebv_col = st.selectbox("Genomic EBV Column", ["-"] + cols, index=cols.index("Genomic_EBV") + 1 if "Genomic_EBV" in cols else 0)
+            genomic_rel_col = st.selectbox("Genomic Reliability Column", ["-"] + cols, index=cols.index("Genomic_Reliability") + 1 if "Genomic_Reliability" in cols else 0)
+            feed_cost_col = st.selectbox("Feed Cost Column", ["-"] + cols, index=cols.index("Feed_Cost") + 1 if "Feed_Cost" in cols else 0)
+            production_value_col = st.selectbox("Production Value Column", ["-"] + cols, index=cols.index("Production_Value") + 1 if "Production_Value" in cols else 0)
+            replacement_cost_col = st.selectbox("Replacement Cost Column", ["-"] + cols, index=cols.index("Replacement_Cost") + 1 if "Replacement_Cost" in cols else 0)
+            culling_value_col = st.selectbox("Culling Value Column", ["-"] + cols, index=cols.index("Culling_Value") + 1 if "Culling_Value" in cols else 0)
+
+        extra_metadata_cols = {
+            "Birth_Date": None if birth_date_col == "-" else birth_date_col,
+            "Reproductive_Status": None if reproductive_col == "-" else reproductive_col,
+            "Health_Status": None if health_col == "-" else health_col,
+            "Defect_Status": None if defect_col == "-" else defect_col,
+            "Culling_Reason": None if culling_reason_col == "-" else culling_reason_col,
+            "Pen": None if pen_col == "-" else pen_col,
+            "Cage": None if cage_col == "-" else cage_col,
+            "Batch": None if batch_col == "-" else batch_col,
+            "Mating_Date": None if mating_date_col == "-" else mating_date_col,
+            "Expected_Offspring_Date": None if expected_date_col == "-" else expected_date_col,
+            "Responsible_Person": None if responsible_col == "-" else responsible_col,
+            "Genomic_EBV": None if genomic_ebv_col == "-" else genomic_ebv_col,
+            "Genomic_Reliability": None if genomic_rel_col == "-" else genomic_rel_col,
+            "Feed_Cost": None if feed_cost_col == "-" else feed_cost_col,
+            "Production_Value": None if production_value_col == "-" else production_value_col,
+            "Replacement_Cost": None if replacement_cost_col == "-" else replacement_cost_col,
+            "Culling_Value": None if culling_value_col == "-" else culling_value_col,
+        }
+
         st.markdown("### 4. Multi-Trait Selection Index")
         excluded_trait_cols = {id_col, sire_col, dam_col, sex_val, age_val, line_val, generation_val}
+        excluded_trait_cols.update([v for v in extra_metadata_cols.values() if v])
         candidate_trait_cols = [
             c for c in cols
             if c not in excluded_trait_cols
         ]
 
         default_traits = []
-        for candidate in ["Phenotype", "Body_Weight", "Egg_Production", "Egg_Weight", "Fertility", "Hatchability", "Survival_Rate"]:
+        for candidate in ["Phenotype", "Body_Weight", "Growth_Rate", "Fertility", "Survival_Rate", "Feed_Efficiency", "Egg_Production", "Egg_Weight", "Hatchability"]:
             if candidate in candidate_trait_cols:
                 default_traits.append(candidate)
 
@@ -3287,6 +4047,14 @@ def main():
         st.markdown("### 6. Selection Parameters")
         intensity = st.slider("Selection Intensity (i)", 0.0, 3.0, 1.5, 0.1)
 
+        st.markdown("### 7. Advanced Rules")
+        with st.expander("Age and Calendar Rules", expanded=False):
+            min_breeding_age = st.number_input("Minimum breeding age", min_value=0.0, max_value=1000.0, value=18.0, step=1.0)
+            max_breeding_age = st.number_input("Maximum productive breeding age", min_value=0.0, max_value=1000.0, value=156.0, step=1.0)
+            calendar_start_date = st.date_input("Default mating calendar start date", value=pd.Timestamp.now().date())
+            mating_interval_days = st.number_input("Mating interval between pairs - days", min_value=1, max_value=365, value=7, step=1)
+            expected_offspring_days = st.number_input("Expected offspring/hatch/birth days after mating", min_value=1, max_value=1000, value=21, step=1)
+
     try:
         try:
             internal = standardize_input(
@@ -3300,6 +4068,7 @@ def main():
                 line_col=line_val,
                 generation_col=generation_val,
                 trait_cols=multi_trait_cols,
+                extra_metadata_cols=extra_metadata_cols,
             )
         except Exception as input_error:
             st.error("The uploaded data format is not valid yet.")
@@ -3370,8 +4139,22 @@ def main():
             {f"Trait_{str(k).strip().replace(' ', '_')}": v for k, v in trait_weights.items()},
         )
 
+        res_display_data = evaluate_age_eligibility(res_display_data, min_breeding_age, max_breeding_age)
+        res_display_data = evaluate_reproductive_status(res_display_data)
+        res_display_data = evaluate_health_and_defect(res_display_data)
+        res_display_data = calculate_ebv_reliability(res_display_data)
+        res_display_data = apply_genomic_support(res_display_data)
+        res_display_data = calculate_economic_projection(res_display_data)
+        res_display_data = assign_final_breeding_decision(res_display_data)
+
         res_df = res_df.merge(
-            res_display_data[["Animal_ID", "Sex_Role", "Selection_Index", "Selection_Index_Rank"]],
+            res_display_data[[
+                "Animal_ID", "Sex_Role", "Selection_Index", "Selection_Index_Rank",
+                "Age_Eligibility", "Reproductive_Decision", "Health_Defect_Decision",
+                "EBV_Reliability_%", "EBV_Reliability_Level", "Genomic_Status",
+                "Combined_Genetic_Value", "Expected_Profit", "Economic_Status",
+                "Final_Breeding_Decision"
+            ]],
             on="Animal_ID",
             how="left",
             suffixes=("", "_display")
@@ -3388,6 +4171,7 @@ def main():
             "6. Pure Line Pyramid",
             "7. Breeder Report",
             "8. Field Guide",
+            "9. Advanced Breeding Management",
         ])
 
         with tabs[0]:
@@ -3397,12 +4181,11 @@ def main():
                 "📊"
             )
             render_tab_help(
-                "How to read this dashboard",
+                "Dashboard",
                 [
-                    "Start with Data Quality Score before trusting the analysis.",
-                    "Use Average F and Highest F to understand inbreeding pressure.",
-                    "Use Classification Distribution and Selection Index to identify useful breeding stock.",
-                    "Review selection and culling tables before making mating decisions."
+                    "Check the Data Quality Score first.",
+                    "Use F, EBV, Selection Index, and Final Decision to understand population status.",
+                    "Review selection and culling candidates before deciding mating pairs."
                 ]
             )
             st.subheader("Data Summary")
@@ -3985,14 +4768,13 @@ def main():
                 "📈"
             )
             render_tab_help(
-                "What this tab shows",
+                "Genetic Charts",
                 [
-                    "Inbreeding distribution helps detect genetic risk concentration.",
-                    "Top EBV chart helps identify high genetic potential animals.",
-                    "Scatter plot helps compare phenotype, inbreeding, classification, and EBV."
+                    "Summarizes inbreeding distribution, EBV, and phenotype relationships.",
+                    "Use the charts to detect risk patterns and superior candidates."
                 ]
             )
-            st.subheader("Genetic Distribution Visualization")
+            st.subheader("Genetic Charts")
 
             v1, v2 = st.columns(2)
 
@@ -4062,14 +4844,14 @@ def main():
                 "🌳"
             )
             render_tab_help(
-                "Recommended use for large datasets",
+                "Pedigree Explorer",
                 [
-                    "Use family subgraph to inspect one animal without rendering thousands of nodes.",
-                    "Use high-risk filter to quickly find problematic relationships.",
-                    "Use full visualization HTML export for complete external review."
+                    "Use family subgraph mode for large datasets.",
+                    "Use the high-risk filter to find problematic relationships.",
+                    "Download HTML for complete visualization."
                 ]
             )
-            st.subheader("Pedigree Chart Visualization")
+            st.subheader("Pedigree Explorer")
 
             st.markdown("""
             This section supports both **complete pedigree information** and **safe visualization for large datasets**. 
@@ -4299,11 +5081,10 @@ def main():
                 "🧬"
             )
             render_tab_help(
-                "How to use the matrix",
+                "Relationship Matrix",
                 [
-                    "Use values close to zero for safer sire-dam pairing.",
-                    "Avoid high relationship values when designing mating plans.",
-                    "For large data, download the matrix CSV instead of rendering all rows."
+                    "Values close to zero are safer for mating.",
+                    "Download CSV if the dataset is too large."
                 ]
             )
             st.subheader("Additive Relationship Matrix")
@@ -4329,14 +5110,13 @@ def main():
                 "🔀"
             )
             render_tab_help(
-                "Important interpretation",
+                "Heterosis",
                 [
-                    "Positive heterosis can indicate useful crossbred performance.",
-                    "Do not use heterosis alone; always check EBV and inbreeding.",
-                    "Crossbreeding can restore diversity but may change pure-line structure."
+                    "Positive heterosis may indicate good crossbred performance.",
+                    "Always check EBV and inbreeding before using animals for breeding."
                 ]
             )
-            st.subheader("Heterosis & Crossbreeding Analysis")
+            st.subheader("Heterosis Analysis")
 
             if "Heterosis" in res_display_data.columns:
                 heterosis_df = res_display_data.copy()
@@ -4394,14 +5174,14 @@ def main():
                 "🏗️"
             )
             render_tab_help(
-                "Pure-line logic",
+                "Pure Line",
                 [
-                    "GGPS and GPS should maintain pure-line nucleus and multiplication stock.",
-                    "PS is produced through controlled inter-line crossing.",
-                    "FS should be treated as terminal commercial stock, not breeding nucleus."
+                    "GGPS/GPS maintain pure lines.",
+                    "PS is used for controlled crossing.",
+                    "FS is terminal commercial stock."
                 ]
             )
-            st.subheader("Pure Line Simulation for GGPS, GPS, PS, and FS")
+            st.subheader("Pure Line Pyramid Simulation")
 
             st.markdown("""
             This module simulates a safe **four-line breeding pyramid** to support the development of:
@@ -4605,14 +5385,13 @@ def main():
                 "📄"
             )
             render_tab_help(
-                "What to do here",
+                "Breeder Report",
                 [
-                    "Fill farm name, breeder name, species, and report notes before downloading PDF.",
-                    "Read executive status and conclusion first.",
-                    "Download the complete PDF as official breeding documentation."
+                    "Fill in report identity before downloading the PDF.",
+                    "Review the status, recommendations, and final decision."
                 ]
             )
-            st.subheader("Summary & Conclusion for Breeder")
+            st.subheader("Breeder Report Summary")
 
             st.markdown("""
             This tab provides a practical summary for breeders. It combines population status, inbreeding risk, EBV performance, selection candidates, culling candidates, mating recommendation, and pure-line pyramid readiness into one easy-to-read conclusion.
@@ -4886,14 +5665,13 @@ def main():
                 "📚"
             )
             render_tab_help(
-                "Why this tab matters",
+                "Field Guide",
                 [
-                    "Explains why elite animals are difficult to identify in real life.",
-                    "Compares poultry and cattle implementation challenges.",
-                    "Gives a realistic step-by-step breeder workflow."
+                    "Field implementation guide.",
+                    "Explains limitations, workflow, and species differences."
                 ]
             )
-            st.subheader("Real-World Implementation of Pedigree Breeding")
+            st.subheader("Field Implementation Guide")
 
             st.markdown("""
             This tab explains how pedigree-based breeding can be applied in real livestock production. 
@@ -5116,6 +5894,188 @@ def main():
                 "Download Real-World Implementation Summary CSV",
                 implementation_summary.to_csv(index=False).encode("utf-8"),
                 "real_world_pedigree_implementation_summary.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+
+        with tabs[8]:
+            render_section_header(
+                "Advanced Breeding Management",
+                "Additional professional breeding modules. These modules use optional columns when available and show guidance when the current sample data is incomplete.",
+                "🧭"
+            )
+            render_tab_help(
+                "Advanced Breeding",
+                [
+                    "Advanced modules for age, reproduction, health, genomic, economic, trend, calendar, and offspring recording.",
+                    "If a column is unavailable, the system only shows a checklist instead of failing."
+                ]
+            )
+
+            st.markdown("### 1. Missing Advanced Data Checklist")
+            missing_cols_df = summarize_missing_advanced_columns(res_display_data)
+            st.dataframe(missing_cols_df, hide_index=True, use_container_width=True)
+
+            st.markdown("### 2. Final Breeding Decision Labels")
+            decision_cols = [
+                "Animal_ID", "Sex_Role", "Age_Eligibility", "Reproductive_Decision",
+                "Health_Defect_Decision", "EBV_Reliability_Level", "Combined_Genetic_Value",
+                "Expected_Profit", "Economic_Status", "Final_Breeding_Decision"
+            ]
+            decision_cols = [c for c in decision_cols if c in res_display_data.columns]
+            st.dataframe(
+                res_display_data[decision_cols].sort_values("Final_Breeding_Decision"),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            decision_summary = res_display_data["Final_Breeding_Decision"].value_counts().reset_index()
+            decision_summary.columns = ["Final_Breeding_Decision", "Total"]
+            st.dataframe(decision_summary, hide_index=True, use_container_width=True)
+
+            st.markdown("### 3. Age, Reproduction, Health, and Defect Modules")
+            ar_cols = [
+                "Animal_ID", "Sex_Role", "Age", "Age_Eligibility",
+                "Reproductive_Status", "Reproductive_Decision",
+                "Health_Status", "Defect_Status", "Health_Defect_Decision"
+            ]
+            ar_cols = [c for c in ar_cols if c in res_display_data.columns]
+            st.dataframe(res_display_data[ar_cols], hide_index=True, use_container_width=True)
+
+            if "Age" not in res_display_data.columns:
+                st.info("Age column is not available. Add an `Age` column to activate age eligibility rules.")
+            if "Reproductive_Status" not in res_display_data.columns:
+                st.info("Reproductive_Status column is not available. Add it to screen fertility and readiness.")
+            if "Health_Status" not in res_display_data.columns and "Defect_Status" not in res_display_data.columns:
+                st.info("Health_Status or Defect_Status columns are not available. Add them to prevent unhealthy animals from being recommended.")
+
+            st.markdown("### 4. EBV Reliability and Genomic Support")
+            reliability_cols = [
+                "Animal_ID", "EBV", "EBV_Reliability_%", "EBV_Reliability_Level",
+                "Genomic_EBV", "Genomic_Reliability", "Genomic_Status", "Combined_Genetic_Value"
+            ]
+            reliability_cols = [c for c in reliability_cols if c in res_display_data.columns]
+            st.dataframe(
+                res_display_data[reliability_cols].sort_values("Combined_Genetic_Value", ascending=False),
+                hide_index=True,
+                use_container_width=True,
+            )
+
+            st.caption("EBV Reliability here is a practical proxy based on pedigree completeness, phenotype availability, generation record, sex record, and progeny count. It is not a formal BLUP reliability.")
+
+            st.markdown("### 5. Generation Trend")
+            generation_trend = calculate_generation_trend(res_display_data)
+            if generation_trend.empty:
+                st.info("Generation trend is not available. Add a `Generation` column such as Founder, G0, G1, GGPS, GPS, PS, or FS.")
+            else:
+                st.dataframe(generation_trend, hide_index=True, use_container_width=True)
+                st.line_chart(generation_trend.set_index("Generation")[["Average_F", "Average_EBV"]])
+
+            st.markdown("### 6. Line Performance Comparison")
+            line_performance = calculate_line_performance(res_display_data)
+            if line_performance.empty:
+                st.info("Line performance comparison is not available. Add a `Line` column such as Line A, Line B, Line C, or Line D.")
+            else:
+                st.dataframe(line_performance, hide_index=True, use_container_width=True)
+                st.bar_chart(line_performance.set_index("Line")["Average_Selection_Index"])
+
+            st.markdown("### 7. Economic Projection")
+            econ_cols = [
+                "Animal_ID", "Feed_Cost", "Production_Value", "Replacement_Cost",
+                "Culling_Value", "Expected_Profit", "Economic_Status", "Final_Breeding_Decision"
+            ]
+            econ_cols = [c for c in econ_cols if c in res_display_data.columns]
+            st.dataframe(res_display_data[econ_cols], hide_index=True, use_container_width=True)
+            if "Feed_Cost" not in res_display_data.columns and "Production_Value" not in res_display_data.columns:
+                st.info("Economic projection needs optional columns such as Feed_Cost, Production_Value, Replacement_Cost, or Culling_Value.")
+
+            st.markdown("### 8. Mating Calendar")
+            calendar_pairs = simulate_mating_pairs(
+                res_display_data,
+                matrix_df,
+                h2_value=h2,
+                depression_rate_value=depression_rate,
+                max_offspring_f=6.25,
+                max_pairs=20,
+            )
+            calendar_pairs = apply_blocked_mating_rules_to_pairs(
+                calendar_pairs,
+                res_display_data,
+                matrix_df,
+                max_safe_f=6.25,
+            )
+            calendar_pairs = calendar_pairs[calendar_pairs["Mating_Rule_Status"] != "Blocked"].copy()
+
+            mating_calendar = build_mating_calendar(
+                calendar_pairs,
+                start_date=calendar_start_date,
+                interval_days=mating_interval_days,
+                expected_days=expected_offspring_days,
+            )
+
+            if mating_calendar.empty:
+                st.warning("No safe mating calendar could be generated from the current data.")
+            else:
+                st.dataframe(mating_calendar, hide_index=True, use_container_width=True)
+                st.download_button(
+                    "Download Mating Calendar CSV",
+                    mating_calendar.to_csv(index=False).encode("utf-8"),
+                    "mating_calendar.csv",
+                    "text/csv",
+                    use_container_width=True,
+                )
+
+            st.markdown("### 9. Auto-Generated Next Generation IDs")
+            id_col1, id_col2, id_col3 = st.columns(3)
+            with id_col1:
+                id_prefix = st.text_input("Offspring ID Prefix", value="NEXTGEN")
+            with id_col2:
+                id_generation = st.text_input("Generation Label", value="G1")
+            with id_col3:
+                id_count = st.number_input("Number of IDs", min_value=1, max_value=1000, value=20, step=1)
+
+            next_ids = generate_next_generation_ids(id_prefix, id_generation, id_count)
+            st.dataframe(next_ids, hide_index=True, use_container_width=True)
+            st.download_button(
+                "Download Next Generation ID Template CSV",
+                next_ids.to_csv(index=False).encode("utf-8"),
+                "next_generation_id_template.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+            st.markdown("### 10. Pen / Cage / Batch Management")
+            location_cols = [
+                "Animal_ID", "Sex_Role", "Farm", "House", "Pen", "Cage", "Group", "Batch",
+                "Line", "Generation", "Final_Breeding_Decision"
+            ]
+            location_cols = [c for c in location_cols if c in res_display_data.columns]
+            if any(c in res_display_data.columns for c in ["Pen", "Cage", "Batch", "Farm", "House", "Group"]):
+                st.dataframe(res_display_data[location_cols], hide_index=True, use_container_width=True)
+            else:
+                st.info("Location management needs optional columns such as Farm, House, Pen, Cage, Group, or Batch.")
+
+            st.markdown("### 11. Offspring Recording Template")
+            offspring_template = pd.DataFrame({
+                "Mating_ID": ["MATE_0001"],
+                "Sire_ID": ["example_sire"],
+                "Dam_ID": ["example_dam"],
+                "Offspring_ID": ["NEXTGEN_G1_0001"],
+                "Birth_Date": [pd.Timestamp.now().date().strftime("%Y-%m-%d")],
+                "Sex": ["Male/Female"],
+                "Line": ["Line A"],
+                "Generation": ["G1"],
+                "Phenotype": [""],
+                "Survival_Status": ["Alive"],
+                "Health_Status": ["Healthy"],
+                "Notes": [""],
+            })
+            st.dataframe(offspring_template, hide_index=True, use_container_width=True)
+            st.download_button(
+                "Download Offspring Recording Template CSV",
+                offspring_template.to_csv(index=False).encode("utf-8"),
+                "offspring_recording_template.csv",
                 "text/csv",
                 use_container_width=True,
             )
