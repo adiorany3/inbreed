@@ -820,8 +820,7 @@ def main():
             if pheno_val:
                 st.markdown("---")
                 st.subheader("Estimasi Tanggapan Seleksi")
-                r1, r2, r3 = st.columns(3)
-                
+
                 # Filter valid phenotypes for SD calculation
                 valid_phenos = pd.to_numeric(res_display_data["Phenotype"], errors='coerce').dropna()
                 if not valid_phenos.empty:
@@ -829,17 +828,30 @@ def main():
                     avg_p = valid_phenos.mean()
                     response = calculate_selection_response(h2, sd_p, intensity)
                     
-                    r1.metric("Rata-rata Fenotipe", f"{avg_p:.2f}")
-                    r2.metric("Standar Deviasi Fenotipe", f"{sd_p:.2f}")
-                    r1_sub, r2_sub, r3_sub = st.columns(3)
-                    r1_sub.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
+                    # Layout baru yang lebih rapi
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Rata-rata Fenotipe", f"{avg_p:.2f}")
+                    m2.metric("Standar Deviasi (σp)", f"{sd_p:.2f}")
+                    m3.metric("Tanggapan Seleksi (R)", f"{response:.4f}")
                     
                     # Heterosis Rata-rata
                     valid_heterosis = res_display_data[res_display_data["Heterosis"] != 0]["Heterosis"]
                     avg_h = valid_heterosis.mean() if not valid_heterosis.empty else 0.0
-                    r2_sub.metric("Rata-rata Heterosis", f"{avg_h:.4f}")
+                    m4.metric("Rata-rata Heterosis", f"{avg_h:.4f}")
                     
-                    r3_sub.info(f"Potensi kemajuan genetik per generasi adalah {response:.4f} unit berdasarkan parameter yang dipilih.")
+                    # Penjelasan interpretasi
+                    st.info(f"""
+                    **Interpretasi Hasil:**
+                    *   **Rata-rata Populasi:** Saat ini adalah **{avg_p:.2f}** unit.
+                    *   **Kemajuan Genetik:** Dengan intensitas seleksi **{intensity}** dan heritabilitas **{h2}**, diprediksi akan ada peningkatan sebesar **{response:.4f}** unit pada generasi berikutnya. Intensitas seleksi yang lebih tinggi (lebih agresif) akan meningkatkan tanggapan seleksi, tetapi juga dapat meningkatkan risiko inbreeding jika tidak dikelola dengan baik. Intensitas seleksi yang moderat (sekitar 1.5) sering dianggap sebagai titik optimal untuk keseimbangan antara kemajuan genetik dan manajemen inbreeding.
+                    *   **Peran Heterosis:** Rata-rata heterosis sebesar **{avg_h:.4f}** unit menunjukkan bahwa beberapa individu mungkin memiliki keunggulan performa karena kombinasi genetik yang lebih baik dari kedua induknya, terutama jika terjadi crossbreeding. Heterosis dapat memberikan dorongan tambahan pada performa keturunan di luar apa yang diprediksi oleh EBV saja.
+                    *   **Estimasi Generasi Mendatang:** Rata-rata performa keturunan diharapkan menjadi **{avg_p + response:.2f}** unit. Namun, ini adalah prediksi rata-rata dan hasil aktual dapat bervariasi tergantung pada faktor lingkungan, manajemen, dan interaksi genetik lainnya. Oleh karena itu, penting untuk terus memantau performa aktual keturunan dan menyesuaikan strategi pemuliaan sesuai kebutuhan.
+                    *   **Catatan Penting:** Tanggapan seleksi adalah prediksi berdasarkan data saat ini. Faktor eksternal seperti perubahan manajemen, penyakit, atau kondisi lingkungan dapat mempengaruhi hasil aktual di lapangan. Selalu gunakan data terbaru untuk perhitungan ulang dan evaluasi berkala terhadap strategi pemuliaan Anda.
+                    *   **Rekomendasi:** Untuk memaksimalkan tanggapan seleksi, fokuslah pada pemilihan individu dengan EBV tinggi dan inbreeding rendah sebagai indukan, serta pertimbangkan penggunaan semen dari pejantan luar untuk meningkatkan variasi genetik dan mengurangi risiko inbreeding.
+                    *   **Peringatan:** Hindari seleksi yang terlalu agresif pada individu dengan inbreeding tinggi, karena ini dapat meningkatkan risiko depresi inbreeding dan menurunkan performa keturunan secara keseluruhan.
+                    *   **Saran Manajemen:** Pertimbangkan untuk melakukan rotasi pejantan secara berkala dan menggunakan strategi crossbreeding jika diperlukan untuk menjaga kesehatan genetik populasi Anda.
+                    *   **Kesimpulan:** Dengan pemahaman yang baik tentang tanggapan seleksi dan manajemen inbreeding, Anda dapat membuat keputusan pemuliaan yang lebih cerdas untuk meningkatkan performa ternak Anda secara berkelanjutan.
+                    """)
                     
                     # Backcross/Sire-Daughter Alert Section
                     backcross_cases = res_display_data[res_display_data["Peringatan_Reproduksi"] != ""]
