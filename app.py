@@ -965,6 +965,424 @@ def simulate_mating_pairs(
 
 
 
+
+
+def make_pedigree_html(dot_source: str, title: str = "Pedigree Visualization") -> str:
+    """
+    Creates a standalone HTML file that renders Graphviz DOT using Viz.js from CDN.
+    This version embeds DOT safely using JSON serialization to prevent syntax errors.
+    """
+    import json
+
+    safe_title = str(title).replace("<", "&lt;").replace(">", "&gt;")
+    dot_json = json.dumps(dot_source)
+
+    filename_base = (
+        safe_title.lower()
+        .replace(" ", "_")
+        .replace("/", "_")
+        .replace("\\", "_")
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{safe_title}</title>
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js"></script>
+    <style>
+        body {{
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+        }}
+        header {{
+            padding: 18px 24px;
+            background: #1e293b;
+            color: white;
+        }}
+        header h1 {{
+            margin: 0 0 6px 0;
+            font-size: 22px;
+        }}
+        header p {{
+            margin: 0;
+            color: #cbd5e1;
+            font-size: 14px;
+        }}
+        main {{
+            padding: 20px;
+        }}
+        .toolbar {{
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }}
+        button {{
+            border: 0;
+            background: #2563eb;
+            color: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }}
+        button:hover {{
+            background: #1d4ed8;
+        }}
+        #graph {{
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 16px;
+            overflow: auto;
+            min-height: 70vh;
+        }}
+        #graph svg {{
+            max-width: none;
+            height: auto;
+        }}
+        .note {{
+            font-size: 13px;
+            color: #475569;
+            margin-bottom: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{safe_title}</h1>
+        <p>Standalone pedigree visualization. Use browser zoom or scroll to inspect large graphs.</p>
+    </header>
+    <main>
+        <div class="toolbar">
+            <button onclick="downloadSvg()">Download SVG</button>
+            <button onclick="downloadDot()">Download DOT Source</button>
+        </div>
+        <div class="note">
+            If the graph is very large, rendering may take time. For thousands of nodes, SVG/DOT can also be opened in external graph tools.
+        </div>
+        <div id="graph">Rendering graph...</div>
+    </main>
+
+    <script>
+        const dotSource = {dot_json};
+        let renderedSvg = "";
+
+        const viz = new Viz();
+
+        viz.renderSVGElement(dotSource)
+            .then(function(element) {{
+                renderedSvg = new XMLSerializer().serializeToString(element);
+                const graph = document.getElementById("graph");
+                graph.innerHTML = "";
+                graph.appendChild(element);
+            }})
+            .catch(function(error) {{
+                document.getElementById("graph").innerText = "Failed to render graph: " + error + "\\n\\nDOT preview:\\n" + dotSource.slice(0, 1000);
+            }});
+
+        function downloadSvg() {{
+            if (!renderedSvg) {{
+                alert("SVG is not ready yet.");
+                return;
+            }}
+            const blob = new Blob([renderedSvg], {{type: "image/svg+xml"}});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "{filename_base}.svg";
+            a.click();
+            URL.revokeObjectURL(url);
+        }}
+
+        function downloadDot() {{
+            const blob = new Blob([dotSource], {{type: "text/vnd.graphviz"}});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "{filename_base}.dot";
+            a.click();
+            URL.revokeObjectURL(url);
+        }}
+    </script>
+</body>
+</html>
+"""
+
+def make_pedigree_report_html(graph_df: pd.DataFrame, dot_source: str, title: str = "Pedigree Report") -> str:
+    """
+    Creates a readable HTML report that includes graph rendering and a data table.
+    """
+    table_cols = [
+        "Animal_ID", "Sex_Role", "Sire_ID", "Dam_ID", "Phenotype",
+        "EBV", "Heterosis", "Inbreeding_%", "Classification",
+        "Inbreeding_Condition", "Reproduction_Warning"
+    ]
+    existing_cols = [col for col in table_cols if col in graph_df.columns]
+    table_html = clean_display(graph_df[existing_cols]).to_html(index=False, escape=False)
+
+    graph_html = make_pedigree_html(dot_source, title=title)
+
+    # Inject table before closing main tag.
+    table_section = f"""
+        <h2>Pedigree Data Table</h2>
+        <div style="overflow:auto; background:white; border:1px solid #cbd5e1; border-radius:12px; padding:12px;">
+            {table_html}
+        </div>
+        <style>
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                font-size: 13px;
+            }}
+            th, td {{
+                border: 1px solid #cbd5e1;
+                padding: 8px;
+                text-align: left;
+            }}
+            th {{
+                background: #e2e8f0;
+            }}
+        </style>
+    """
+    return graph_html.replace("</main>", table_section + "\n</main>")
+
+
+def get_family_subgraph(result_df: pd.DataFrame, selected_id: str, generations_up: int = 3, generations_down: int = 2) -> pd.DataFrame:
+    """
+    Builds a pedigree subgraph around one selected animal:
+    - ancestors up to generations_up
+    - descendants up to generations_down
+    """
+    if not selected_id:
+        return result_df.head(0).copy()
+
+    df = result_df.copy()
+    df["Animal_ID"] = df["Animal_ID"].astype(str)
+    df["Sire_ID"] = df["Sire_ID"].apply(lambda x: None if is_unknown(x) else str(x))
+    df["Dam_ID"] = df["Dam_ID"].apply(lambda x: None if is_unknown(x) else str(x))
+
+    parents = {
+        row["Animal_ID"]: (row["Sire_ID"], row["Dam_ID"])
+        for _, row in df.iterrows()
+    }
+
+    children = {}
+    for _, row in df.iterrows():
+        animal = row["Animal_ID"]
+        for parent in [row["Sire_ID"], row["Dam_ID"]]:
+            if parent:
+                children.setdefault(parent, set()).add(animal)
+
+    keep = set([str(selected_id)])
+
+    current = {str(selected_id)}
+    for _ in range(generations_up):
+        next_level = set()
+        for animal in current:
+            sire, dam = parents.get(animal, (None, None))
+            for parent in [sire, dam]:
+                if parent:
+                    next_level.add(parent)
+        keep.update(next_level)
+        current = next_level
+
+    current = {str(selected_id)}
+    for _ in range(generations_down):
+        next_level = set()
+        for animal in current:
+            next_level.update(children.get(animal, set()))
+        keep.update(next_level)
+        current = next_level
+
+    return df[df["Animal_ID"].isin(keep)].copy()
+
+
+def filter_pedigree_for_visualization(
+    result_df: pd.DataFrame,
+    mode: str,
+    selected_id: Optional[str] = None,
+    classification_filter: Optional[list] = None,
+    only_inbred: bool = False,
+    only_warning: bool = False,
+    max_nodes: Optional[int] = None,
+    generations_up: int = 3,
+    generations_down: int = 2,
+) -> pd.DataFrame:
+    """
+    Filters pedigree data for visualization while keeping full-data access through downloads.
+    """
+    df = result_df.copy()
+
+    if mode == "Family subgraph around selected animal" and selected_id:
+        df = get_family_subgraph(
+            df,
+            selected_id=selected_id,
+            generations_up=generations_up,
+            generations_down=generations_down,
+        )
+
+    elif mode == "High-risk animals only":
+        df = df[
+            (df["Inbreeding_%"] > 0) |
+            (df["Reproduction_Warning"].astype(str) != "") |
+            (df["Classification"].astype(str).str.contains("Final Stock", case=False, na=False))
+        ].copy()
+
+    elif mode == "Selection candidates only":
+        threshold_ebv = df["EBV"].quantile(0.75)
+        df = df[
+            (df["EBV"] >= threshold_ebv) &
+            (df["Inbreeding_%"] < 6.25)
+        ].copy()
+
+    elif mode == "Custom filter":
+        if classification_filter:
+            df = df[df["Classification"].isin(classification_filter)].copy()
+
+        if only_inbred:
+            df = df[df["Inbreeding_%"] > 0].copy()
+
+        if only_warning:
+            df = df[df["Reproduction_Warning"].astype(str) != ""].copy()
+
+    if max_nodes is not None and max_nodes > 0 and len(df) > max_nodes:
+        df = df.head(max_nodes).copy()
+
+    return df
+
+
+def make_dot_unlimited(result_df: pd.DataFrame, include_legend: bool = True) -> str:
+    """
+    Creates a Graphviz DOT pedigree graph without a hard node limit.
+    For very large datasets, use download buttons or filtered rendering.
+    """
+    df = result_df.copy()
+
+    if df.empty:
+        return 'digraph Pedigree { label="No data to display"; }'
+
+    df["Animal_ID"] = df["Animal_ID"].astype(str)
+    animal_set = set(df["Animal_ID"].astype(str))
+
+    dot = [
+        "digraph Pedigree {",
+        "rankdir=LR;",
+        "splines=true;",
+        "overlap=false;",
+        'graph [fontname="Arial", fontsize=12, labelloc="t", label="Pedigree Chart Visualization"];',
+        'node [shape=box, style="rounded,filled", fontname="Arial", fontsize=9];',
+        'edge [arrowsize=0.5, fontname="Arial", fontsize=8];',
+    ]
+
+    if include_legend:
+        dot.extend([
+            'subgraph cluster_legend {',
+            'label="Legend";',
+            'style="rounded,dashed";',
+            '"legend_safe" [label="Safe / Not inbred", fillcolor="#FFFFFF"];',
+            '"legend_low" [label="Inbred / Low-Moderate Risk", fillcolor="#FFF4CC"];',
+            '"legend_high" [label="Very High Inbreeding", fillcolor="#FFE4E1"];',
+            '"legend_elite" [label="Elite Stock Border", fillcolor="#FFFFFF", color="#FFD700", penwidth="3.0"];',
+            '"legend_breeding" [label="Breeding Stock Border", fillcolor="#FFFFFF", color="#32CD32", penwidth="2.0"];',
+            "}",
+        ])
+
+    for _, row in df.iterrows():
+        animal = dot_escape(row["Animal_ID"])
+        f_value = float(row.get("Inbreeding_%", 0))
+        classification = str(row.get("Classification", ""))
+        sex_role = str(row.get("Sex_Role", ""))
+        warning = str(row.get("Reproduction_Warning", ""))
+
+        fill = "#FFFFFF"
+        border_color = "black"
+        penwidth = "1.0"
+
+        if f_value >= 25:
+            fill = "#FFE4E1"
+        elif f_value > 0:
+            fill = "#FFF4CC"
+
+        if classification == "Elite Stock":
+            border_color = "#FFD700"
+            penwidth = "3.0"
+        elif classification == "Breeding Stock":
+            border_color = "#32CD32"
+            penwidth = "2.0"
+        elif "Final Stock" in classification:
+            border_color = "#DC2626"
+            penwidth = "2.0"
+
+        warning_text = "\\nWARNING" if warning and warning != "-" else ""
+
+        label = (
+            f"{row['Animal_ID']}\\n"
+            f"{sex_role}\\n"
+            f"F={f_value:.2f}% | EBV={float(row.get('EBV', 0)):.2f}\\n"
+            f"{classification}{warning_text}"
+        )
+
+        dot.append(
+            f'"{animal}" [label="{dot_escape(label)}", fillcolor="{fill}", color="{border_color}", penwidth="{penwidth}"];'
+        )
+
+    for _, row in df.iterrows():
+        animal = dot_escape(row["Animal_ID"])
+        sire = row.get("Sire_ID")
+        dam = row.get("Dam_ID")
+
+        if not is_unknown(sire) and str(sire) in animal_set:
+            dot.append(f'"{dot_escape(sire)}" -> "{animal}" [label="sire", color="#2563EB"];')
+
+        if not is_unknown(dam) and str(dam) in animal_set:
+            dot.append(f'"{dot_escape(dam)}" -> "{animal}" [label="dam", color="#DB2777"];')
+
+    dot.append("}")
+    return "\n".join(dot)
+
+
+def pedigree_summary_table(result_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Produces a compact summary for large pedigree datasets.
+    """
+    df = result_df.copy()
+
+    return pd.DataFrame({
+        "Metric": [
+            "Total animals",
+            "Animals with known sire",
+            "Animals with known dam",
+            "Inbred animals",
+            "High-risk animals F >= 12.5%",
+            "Very high-risk animals F >= 25%",
+            "Backcross / reproduction warning",
+            "Elite Stock",
+            "Breeding Stock",
+            "Commercial",
+            "Final Stock",
+        ],
+        "Value": [
+            len(df),
+            int((~df["Sire_ID"].apply(is_unknown)).sum()),
+            int((~df["Dam_ID"].apply(is_unknown)).sum()),
+            int((df["Inbreeding_%"] > 0).sum()),
+            int((df["Inbreeding_%"] >= 12.5).sum()),
+            int((df["Inbreeding_%"] >= 25).sum()),
+            int((df["Reproduction_Warning"].astype(str) != "").sum()),
+            int((df["Classification"] == "Elite Stock").sum()),
+            int((df["Classification"] == "Breeding Stock").sum()),
+            int((df["Classification"] == "Commercial").sum()),
+            int((df["Classification"].astype(str).str.contains("Final Stock", case=False, na=False)).sum()),
+        ],
+    })
+
+
 def build_pair_pool_for_pure_lines(
     result_df: pd.DataFrame,
     matrix_df: pd.DataFrame,
@@ -2076,16 +2494,227 @@ def main():
         with tabs[2]:
             st.subheader("Pedigree Chart Visualization")
 
-            if len(res_df) > 100:
-                st.info(
-                    "Since the data contains more than 100 animals, the chart only displays the first 50 individuals for performance."
+            st.markdown("""
+            This section supports both **complete pedigree information** and **safe visualization for large datasets**. 
+            Rendering thousands of nodes directly in the browser is possible, but it may be slow depending on your computer and browser. 
+            For large datasets, use filtered modes or download the full DOT file for external visualization.
+            """)
+
+            total_nodes = len(res_df)
+            total_edges = int((~res_df["Sire_ID"].apply(is_unknown)).sum() + (~res_df["Dam_ID"].apply(is_unknown)).sum())
+
+            pg_m1, pg_m2, pg_m3, pg_m4 = st.columns(4)
+            pg_m1.metric("Total Nodes", f"{total_nodes}")
+            pg_m2.metric("Estimated Edges", f"{total_edges}")
+            pg_m3.metric("Inbred Animals", f"{int((res_df['Inbreeding_%'] > 0).sum())}")
+            pg_m4.metric("High Risk F >= 12.5%", f"{int((res_df['Inbreeding_%'] >= 12.5).sum())}")
+
+            with st.expander("Pedigree Summary", expanded=False):
+                st.dataframe(
+                    pedigree_summary_table(res_df),
+                    hide_index=True,
+                    use_container_width=True,
                 )
 
-            st.markdown(
-                "This chart shows parent-offspring relationships. Yellow indicates inbred animals, while red indicates very high inbreeding."
-            )
-            st.graphviz_chart(make_dot(res_df))
+            st.markdown("### Visualization Mode")
 
+            graph_mode = st.selectbox(
+                "Choose graph display mode",
+                [
+                    "Family subgraph around selected animal",
+                    "High-risk animals only",
+                    "Selection candidates only",
+                    "Custom filter",
+                    "Full pedigree graph",
+                ],
+                help="For thousands of animals, filtered views are recommended for faster rendering."
+            )
+
+            selected_graph_animal = None
+            classification_filter = None
+            only_inbred_filter = False
+            only_warning_filter = False
+            generations_up = 3
+            generations_down = 2
+            render_limit = None
+
+            if graph_mode == "Family subgraph around selected animal":
+                selected_graph_animal = st.selectbox(
+                    "Select animal to inspect",
+                    res_df["Animal_ID"].astype(str).tolist(),
+                    help="The graph will show selected animal, ancestors, and descendants."
+                )
+
+                fam_col1, fam_col2 = st.columns(2)
+                with fam_col1:
+                    generations_up = st.slider("Ancestor generations", 1, 10, 3)
+                with fam_col2:
+                    generations_down = st.slider("Descendant generations", 0, 10, 2)
+
+            elif graph_mode == "Custom filter":
+                available_classes = sorted(res_df["Classification"].dropna().astype(str).unique().tolist())
+
+                classification_filter = st.multiselect(
+                    "Filter by classification",
+                    available_classes,
+                    default=available_classes,
+                )
+
+                filter_col1, filter_col2 = st.columns(2)
+                with filter_col1:
+                    only_inbred_filter = st.checkbox("Show only inbred animals", value=False)
+                with filter_col2:
+                    only_warning_filter = st.checkbox("Show only animals with reproduction warning", value=False)
+
+            elif graph_mode == "Full pedigree graph":
+                st.warning(
+                    "Full graph mode may be heavy for hundreds or thousands of animals. If rendering is slow, download the DOT file or switch to filtered mode."
+                )
+
+            if graph_mode != "Full pedigree graph":
+                render_limit = st.number_input(
+                    "Maximum nodes to render in browser, 0 means no limit",
+                    min_value=0,
+                    max_value=10000,
+                    value=500,
+                    step=50,
+                    help="This only limits what is rendered on screen. Full data remains available in downloads."
+                )
+                render_limit = None if render_limit == 0 else int(render_limit)
+            else:
+                confirm_full_render = st.checkbox(
+                    "I understand the browser may slow down. Render the full graph.",
+                    value=False,
+                )
+                if not confirm_full_render:
+                    render_limit = 500
+                    st.info("Full rendering is not confirmed, so the preview is limited to the first 500 nodes.")
+                else:
+                    render_limit = None
+
+            graph_df = filter_pedigree_for_visualization(
+                res_df,
+                mode=graph_mode,
+                selected_id=selected_graph_animal,
+                classification_filter=classification_filter,
+                only_inbred=only_inbred_filter,
+                only_warning=only_warning_filter,
+                max_nodes=render_limit,
+                generations_up=generations_up,
+                generations_down=generations_down,
+            )
+
+            st.markdown("### Graph Preview")
+            st.caption(
+                f"Rendering {len(graph_df)} node(s) in the browser. Full pedigree still contains {len(res_df)} node(s)."
+            )
+
+            if graph_df.empty:
+                st.warning("No animals match the selected visualization filter.")
+            else:
+                dot_preview = make_dot_unlimited(graph_df, include_legend=True)
+                st.graphviz_chart(dot_preview)
+
+                with st.expander("Rendered Graph Data", expanded=False):
+                    display_cols = [
+                        "Animal_ID", "Sex_Role", "Sire_ID", "Dam_ID", "Phenotype",
+                        "EBV", "Heterosis", "Inbreeding_%", "Classification",
+                        "Inbreeding_Condition", "Reproduction_Warning"
+                    ]
+                    existing_cols = [col for col in display_cols if col in graph_df.columns]
+                    st.dataframe(
+                        clean_display(graph_df[existing_cols]),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+            st.markdown("### Download Visualization and Pedigree Data")
+
+            full_dot = make_dot_unlimited(res_df, include_legend=True)
+            preview_dot = make_dot_unlimited(graph_df, include_legend=True) if not graph_df.empty else ""
+
+            full_html = make_pedigree_report_html(
+                res_df,
+                full_dot,
+                title="Full Pedigree Visualization Report"
+            )
+
+            preview_html = make_pedigree_report_html(
+                graph_df,
+                preview_dot,
+                title="Preview Pedigree Visualization Report"
+            ) if not graph_df.empty else ""
+
+            export_col1, export_col2, export_col3 = st.columns(3)
+
+            with export_col1:
+                st.download_button(
+                    "Download Full Visualization HTML",
+                    full_html.encode("utf-8"),
+                    "full_pedigree_visualization.html",
+                    "text/html",
+                    use_container_width=True,
+                    help="Open this file directly in a browser. It contains the full pedigree graph and data table."
+                )
+
+            with export_col2:
+                st.download_button(
+                    "Download Current View HTML",
+                    preview_html.encode("utf-8"),
+                    "current_pedigree_view.html",
+                    "text/html",
+                    use_container_width=True,
+                    help="Open this file in a browser. It contains only the currently rendered/filtered view."
+                )
+
+            with export_col3:
+                pedigree_csv_cols = [
+                    "Animal_ID", "Sex_Role", "Sire_ID", "Dam_ID", "Phenotype",
+                    "EBV", "Heterosis", "Inbreeding_%", "Classification",
+                    "Inbreeding_Condition", "Biological_Impact", "Recommendation",
+                    "Reproduction_Warning"
+                ]
+                existing_export_cols = [col for col in pedigree_csv_cols if col in res_df.columns]
+                st.download_button(
+                    "Download Full Pedigree CSV",
+                    clean_display(res_df[existing_export_cols]).to_csv(index=False).encode("utf-8"),
+                    "full_pedigree_information.csv",
+                    "text/csv",
+                    use_container_width=True,
+                )
+
+            with st.expander("Advanced export for graph software", expanded=False):
+                st.caption(
+                    "Use DOT only if you want to open the graph in Graphviz, Gephi, yEd, or another external graph visualization tool."
+                )
+                adv_col1, adv_col2 = st.columns(2)
+
+                with adv_col1:
+                    st.download_button(
+                        "Download Full DOT Source",
+                        full_dot.encode("utf-8"),
+                        "full_pedigree_graph.dot",
+                        "text/vnd.graphviz",
+                        use_container_width=True,
+                    )
+
+                with adv_col2:
+                    st.download_button(
+                        "Download Current View DOT Source",
+                        preview_dot.encode("utf-8"),
+                        "current_pedigree_view.dot",
+                        "text/vnd.graphviz",
+                        use_container_width=True,
+                    )
+
+            st.info("""
+            **Recommended workflow for very large samples:**
+
+            1. Use **Family subgraph** to inspect one animal's ancestors and descendants.
+            2. Use **High-risk animals only** to quickly identify problematic matings.
+            3. Use **Selection candidates only** to inspect animals suitable for breeding.
+            4. Use **Full Pedigree DOT** for complete external visualization when the dataset contains thousands of animals.
+            """)
         with tabs[3]:
             st.subheader("Additive Relationship Matrix")
 
