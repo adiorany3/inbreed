@@ -183,20 +183,75 @@ def analyze_hardy_weinberg(result_df: pd.DataFrame) -> Dict:
     }
 
 
-def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
-    cols = [id_col, sire_col, dam_col]
+def standardize_input(
+    raw_df,
+    id_col,
+    sire_col,
+    dam_col,
+    phenotype_col=None,
+    sex_col=None,
+    age_col=None,
+    line_col=None,
+    generation_col=None,
+    trait_cols=None,
+):
+    """
+    Standardizes uploaded data into required pedigree columns and optional breeding metadata.
 
-    if phenotype_col and phenotype_col in raw_df.columns:
-        cols.append(phenotype_col)
-        df = raw_df[cols].copy()
-        df.columns = ["Animal_ID", "Sire_ID", "Dam_ID", "Phenotype"]
-    else:
-        df = raw_df[cols].copy()
-        df.columns = ["Animal_ID", "Sire_ID", "Dam_ID"]
+    Required:
+    - Animal_ID
+    - Sire_ID
+    - Dam_ID
 
-    for col in df.columns:
-        if col != "Phenotype":
+    Optional:
+    - Phenotype
+    - Sex
+    - Age
+    - Line
+    - Generation
+    - Additional numeric trait columns for Multi-Trait Selection Index
+    """
+    trait_cols = trait_cols or []
+
+    selected = []
+    output_names = []
+
+    def add_col(source_col, output_col):
+        if source_col and source_col != "-" and source_col in raw_df.columns and output_col not in output_names:
+            selected.append(source_col)
+            output_names.append(output_col)
+
+    add_col(id_col, "Animal_ID")
+    add_col(sire_col, "Sire_ID")
+    add_col(dam_col, "Dam_ID")
+    add_col(phenotype_col, "Phenotype")
+    add_col(sex_col, "Sex")
+    add_col(age_col, "Age")
+    add_col(line_col, "Line")
+    add_col(generation_col, "Generation")
+
+    for trait_col in trait_cols:
+        if trait_col and trait_col != "-" and trait_col in raw_df.columns:
+            safe_name = f"Trait_{str(trait_col).strip().replace(' ', '_')}"
+            if safe_name not in output_names:
+                selected.append(trait_col)
+                output_names.append(safe_name)
+
+    df = raw_df[selected].copy()
+    df.columns = output_names
+
+    for col in ["Animal_ID", "Sire_ID", "Dam_ID"]:
+        if col in df.columns:
             df[col] = df[col].apply(clean_id)
+
+    if "Sex" in df.columns:
+        df["Sex"] = df["Sex"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
+
+    if "Line" in df.columns:
+        df["Line"] = df["Line"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
+
+    if "Generation" in df.columns:
+        df["Generation"] = df["Generation"].astype(str).apply(lambda x: EMPTY if is_unknown(x) else x.strip())
 
     df = df.dropna(subset=["Animal_ID"]).copy()
 
@@ -204,6 +259,8 @@ def standardize_input(raw_df, id_col, sire_col, dam_col, phenotype_col=None):
         raise ValueError("No valid Animal_ID was found.")
 
     return df.reset_index(drop=True)
+
+
 
 
 def klasifikasi_ternak(ebv: float, f_percent: float) -> str:
@@ -503,6 +560,334 @@ def show_input_validation_messages(validation_result: Dict):
         6. If `Phenotype` is selected, write numeric values only, for example `450`, `520.5`, or `1200`.
         7. Avoid pedigree cycles. Example: if A is the parent of B, B cannot also be the parent or ancestor of A.
         """)
+
+
+
+def merge_optional_metadata(std_df: pd.DataFrame, res_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merges optional metadata and trait columns from standardized input into result dataframe.
+    """
+    optional_cols = [
+        col for col in std_df.columns
+        if col not in ["Sire_ID", "Dam_ID", "Phenotype"]
+    ]
+
+    optional_cols = [
+        col for col in optional_cols
+        if col == "Animal_ID" or col in ["Sex", "Age", "Line", "Generation"] or col.startswith("Trait_")
+    ]
+
+    if not optional_cols or "Animal_ID" not in optional_cols:
+        return res_df
+
+    meta_df = std_df[optional_cols].copy()
+    out = res_df.merge(meta_df, on="Animal_ID", how="left", suffixes=("", "_meta"))
+
+    for col in ["Sex", "Age", "Line", "Generation"]:
+        if col in out.columns:
+            out[col] = out[col].apply(lambda x: EMPTY if is_unknown(x) else str(x).strip())
+
+    return out
+
+
+def normalize_sex_value(value: str) -> Optional[str]:
+    """
+    Converts common sex labels into Male/Female role labels.
+    """
+    if is_unknown(value):
+        return None
+
+    text = str(value).strip().lower()
+
+    male_values = {
+        "m", "male", "jantan", "pejantan", "sire", "bull", "rooster", "cock",
+        "l", "laki", "laki-laki", "ayam jantan"
+    }
+
+    female_values = {
+        "f", "female", "betina", "induk", "dam", "cow", "hen",
+        "p", "perempuan", "ayam betina"
+    }
+
+    if text in male_values:
+        return "Male / Sire Candidate"
+
+    if text in female_values:
+        return "Female / Dam Candidate"
+
+    return None
+
+
+def calculate_data_quality_score(df: pd.DataFrame) -> Dict:
+    """
+    Calculates a simple data quality score for breeder review.
+    """
+    total = len(df)
+    if total == 0:
+        return {
+            "score": 0,
+            "grade": "Invalid",
+            "details": pd.DataFrame(),
+            "recommendation": "No valid data is available."
+        }
+
+    animal_complete = 100.0 * (1 - df["Animal_ID"].apply(is_unknown).mean()) if "Animal_ID" in df.columns else 0
+    sire_complete = 100.0 * (1 - df["Sire_ID"].apply(is_unknown).mean()) if "Sire_ID" in df.columns else 0
+    dam_complete = 100.0 * (1 - df["Dam_ID"].apply(is_unknown).mean()) if "Dam_ID" in df.columns else 0
+
+    if "Phenotype" in df.columns:
+        phenotype_complete = 100.0 * (1 - df["Phenotype"].apply(is_unknown).mean())
+    else:
+        phenotype_complete = 0
+
+    sex_complete = 100.0 * (1 - df["Sex"].apply(is_unknown).mean()) if "Sex" in df.columns else 0
+    age_complete = 100.0 * (1 - df["Age"].apply(is_unknown).mean()) if "Age" in df.columns else 0
+    line_complete = 100.0 * (1 - df["Line"].apply(is_unknown).mean()) if "Line" in df.columns else 0
+    generation_complete = 100.0 * (1 - df["Generation"].apply(is_unknown).mean()) if "Generation" in df.columns else 0
+
+    duplicate_rate = 100.0 * df["Animal_ID"].duplicated().mean() if "Animal_ID" in df.columns else 100
+    warning_rate = 100.0 * (df["Reproduction_Warning"].astype(str) != "").mean() if "Reproduction_Warning" in df.columns else 0
+
+    parent_ids = set()
+    if "Sire_ID" in df.columns:
+        parent_ids |= set(df["Sire_ID"].dropna().astype(str))
+    if "Dam_ID" in df.columns:
+        parent_ids |= set(df["Dam_ID"].dropna().astype(str))
+    parent_ids = {p for p in parent_ids if not is_unknown(p)}
+
+    animal_ids = set(df["Animal_ID"].dropna().astype(str)) if "Animal_ID" in df.columns else set()
+    missing_parent_rate = 100.0 * (len(parent_ids - animal_ids) / max(len(parent_ids), 1))
+
+    components = {
+        "Animal ID completeness": animal_complete,
+        "Sire completeness": sire_complete,
+        "Dam completeness": dam_complete,
+        "Phenotype completeness": phenotype_complete,
+        "Sex completeness": sex_complete,
+        "Age completeness": age_complete,
+        "Line completeness": line_complete,
+        "Generation completeness": generation_complete,
+        "Duplicate penalty": max(0, 100 - duplicate_rate),
+        "Missing parent penalty": max(0, 100 - missing_parent_rate),
+        "Warning penalty": max(0, 100 - warning_rate),
+    }
+
+    # Weighted score: core pedigree has the highest influence.
+    score = (
+        animal_complete * 0.15 +
+        sire_complete * 0.12 +
+        dam_complete * 0.12 +
+        phenotype_complete * 0.12 +
+        sex_complete * 0.10 +
+        age_complete * 0.07 +
+        line_complete * 0.08 +
+        generation_complete * 0.08 +
+        max(0, 100 - duplicate_rate) * 0.06 +
+        max(0, 100 - missing_parent_rate) * 0.05 +
+        max(0, 100 - warning_rate) * 0.05
+    )
+
+    if score >= 85:
+        grade = "Excellent"
+        recommendation = "Data quality is strong enough for structured breeding decisions."
+    elif score >= 70:
+        grade = "Good"
+        recommendation = "Data can be used, but completing missing metadata will improve accuracy."
+    elif score >= 50:
+        grade = "Fair"
+        recommendation = "Use results cautiously. Improve pedigree, sex, line, generation, and phenotype records."
+    else:
+        grade = "Poor"
+        recommendation = "Data quality is too limited for reliable breeding decisions. Improve recording first."
+
+    details = pd.DataFrame({
+        "Data Quality Component": list(components.keys()),
+        "Completeness / Score": [round(v, 2) for v in components.values()],
+    })
+
+    return {
+        "score": round(float(score), 2),
+        "grade": grade,
+        "details": details,
+        "recommendation": recommendation,
+    }
+
+
+def calculate_multi_trait_selection_index(result_df: pd.DataFrame, trait_columns: list, trait_weights: Dict[str, float]) -> pd.DataFrame:
+    """
+    Calculates a simple standardized Multi-Trait Selection Index.
+
+    Each selected trait is converted into z-score:
+    z = (value - mean) / sd
+
+    Selection_Index = sum(weight * z_trait)
+
+    Higher values indicate better overall multi-trait performance.
+    """
+    df = result_df.copy()
+
+    if not trait_columns:
+        df["Selection_Index"] = df.get("EBV", 0)
+        df["Selection_Index_Rank"] = df["Selection_Index"].rank(ascending=False, method="dense").astype(int)
+        return df
+
+    index_value = pd.Series(0.0, index=df.index)
+
+    total_weight = sum(float(trait_weights.get(col, 0)) for col in trait_columns)
+    if total_weight <= 0:
+        total_weight = 1.0
+
+    used_traits = []
+
+    for col in trait_columns:
+        if col not in df.columns:
+            continue
+
+        values = pd.to_numeric(df[col], errors="coerce")
+        if values.notna().sum() < 2:
+            continue
+
+        sd = values.std()
+        if sd == 0 or pd.isna(sd):
+            continue
+
+        z = (values - values.mean()) / sd
+        weight = float(trait_weights.get(col, 0)) / total_weight
+        index_value = index_value + (z.fillna(0) * weight)
+        used_traits.append(col)
+
+    if not used_traits:
+        df["Selection_Index"] = df.get("EBV", 0)
+    else:
+        # Combine multi-trait phenotype index with EBV direction.
+        ebv = pd.to_numeric(df.get("EBV", 0), errors="coerce").fillna(0)
+        ebv_z = (ebv - ebv.mean()) / ebv.std() if ebv.std() not in [0, np.nan] and not pd.isna(ebv.std()) else ebv * 0
+        df["Selection_Index"] = (0.7 * index_value) + (0.3 * ebv_z.fillna(0))
+
+    df["Selection_Index"] = df["Selection_Index"].round(4)
+    df["Selection_Index_Rank"] = df["Selection_Index"].rank(ascending=False, method="dense").astype(int)
+
+    return df
+
+
+def evaluate_blocked_mating_rules(
+    sire_id: str,
+    dam_id: str,
+    result_df: pd.DataFrame,
+    matrix_df: pd.DataFrame,
+    max_safe_f: float = 6.25,
+) -> Dict:
+    """
+    Evaluates blocked mating rules for a proposed sire-dam pair.
+    """
+    sire_id = str(sire_id)
+    dam_id = str(dam_id)
+
+    df = result_df.copy()
+    df["Animal_ID"] = df["Animal_ID"].astype(str)
+
+    lookup = df.set_index("Animal_ID").to_dict("index") if "Animal_ID" in df.columns else {}
+
+    sire_row = lookup.get(sire_id, {})
+    dam_row = lookup.get(dam_id, {})
+
+    sire_sire = None if is_unknown(sire_row.get("Sire_ID")) else str(sire_row.get("Sire_ID"))
+    sire_dam = None if is_unknown(sire_row.get("Dam_ID")) else str(sire_row.get("Dam_ID"))
+    dam_sire = None if is_unknown(dam_row.get("Sire_ID")) else str(dam_row.get("Sire_ID"))
+    dam_dam = None if is_unknown(dam_row.get("Dam_ID")) else str(dam_row.get("Dam_ID"))
+
+    reasons = []
+    status = "Allowed"
+
+    if sire_id == dam_id:
+        reasons.append("Same animal cannot be mated with itself.")
+
+    # Parent-offspring
+    if dam_sire == sire_id or dam_dam == sire_id:
+        reasons.append("Blocked: sire is a parent of the dam.")
+    if sire_sire == dam_id or sire_dam == dam_id:
+        reasons.append("Blocked: dam is a parent of the sire.")
+
+    # Full sibling
+    if sire_sire and sire_dam and dam_sire and dam_dam and sire_sire == dam_sire and sire_dam == dam_dam:
+        reasons.append("Blocked: full-sibling mating.")
+
+    # Half sibling
+    elif (sire_sire and sire_sire == dam_sire) or (sire_dam and sire_dam == dam_dam) or (sire_sire and sire_sire == dam_dam) or (sire_dam and sire_dam == dam_sire):
+        reasons.append("Warning: half-sibling or close shared-parent mating.")
+
+    # Same line rules
+    sire_line = str(sire_row.get("Line", EMPTY))
+    dam_line = str(dam_row.get("Line", EMPTY))
+    if not is_unknown(sire_line) and not is_unknown(dam_line) and sire_line == dam_line:
+        reasons.append("Warning: same-line mating. Use only if maintaining pure line; avoid for crossing.")
+
+    # FS as breeding nucleus
+    sire_gen = str(sire_row.get("Generation", EMPTY)).upper()
+    dam_gen = str(dam_row.get("Generation", EMPTY)).upper()
+    if sire_gen == "FS" or dam_gen == "FS":
+        reasons.append("Blocked: FS should be treated as terminal commercial stock, not breeding nucleus.")
+
+    # Relationship-based risk
+    predicted_f = None
+    if sire_id in matrix_df.index and dam_id in matrix_df.columns:
+        relationship = float(matrix_df.loc[sire_id, dam_id])
+        predicted_f = 0.5 * relationship * 100
+        if predicted_f >= 25:
+            reasons.append("Blocked: predicted offspring F is very high.")
+        elif predicted_f >= 12.5:
+            reasons.append("High risk: predicted offspring F is above 12.5%.")
+        elif predicted_f > max_safe_f:
+            reasons.append("Caution: predicted offspring F is above selected safe threshold.")
+
+    if any(reason.startswith("Blocked") for reason in reasons):
+        status = "Blocked"
+    elif reasons:
+        status = "Warning"
+    else:
+        status = "Allowed"
+
+    return {
+        "Mating_Rule_Status": status,
+        "Blocked_Mating_Reasons": " | ".join(reasons) if reasons else "No blocking rule detected.",
+        "Rule_Predicted_F_%": None if predicted_f is None else round(float(predicted_f), 4),
+    }
+
+
+def apply_blocked_mating_rules_to_pairs(pair_df: pd.DataFrame, result_df: pd.DataFrame, matrix_df: pd.DataFrame, max_safe_f: float = 6.25) -> pd.DataFrame:
+    """
+    Adds blocked mating rule columns to simulated mating pairs.
+    """
+    if pair_df.empty:
+        return pair_df
+
+    out = pair_df.copy()
+    statuses = []
+    reasons = []
+
+    for _, row in out.iterrows():
+        eval_res = evaluate_blocked_mating_rules(
+            row["Suggested_Sire"],
+            row["Suggested_Dam"],
+            result_df,
+            matrix_df,
+            max_safe_f=max_safe_f,
+        )
+        statuses.append(eval_res["Mating_Rule_Status"])
+        reasons.append(eval_res["Blocked_Mating_Reasons"])
+
+    out["Mating_Rule_Status"] = statuses
+    out["Blocked_Mating_Reasons"] = reasons
+
+    # Allowed and Warning pairs first; Blocked pairs last.
+    status_order = {"Allowed": 0, "Warning": 1, "Blocked": 2}
+    out["_status_order"] = out["Mating_Rule_Status"].map(status_order).fillna(9)
+    out = out.sort_values(
+        ["_status_order", "Predicted_Offspring_F_%", "Expected_Offspring_EBV"],
+        ascending=[True, True, False],
+    ).drop(columns=["_status_order"]).reset_index(drop=True)
+
+    return out
 
 
 def calculate(df_input, h2=0.3, depression_rate=1.0):
@@ -934,25 +1319,31 @@ def generate_pdf(result_df, settings=None):
 
 
 
-def detect_sex_role(animal_id: str, sire_role_ids: set, dam_role_ids: set) -> str:
+def detect_sex_role(animal_id: str, sire_role_ids: set, dam_role_ids: set, explicit_sex=None) -> str:
     """
-    Detects animal sex/role using pedigree role and common ID patterns.
+    Detects animal sex/role.
+
     Priority:
-    1. If the animal appears as Sire_ID, it is treated as Male/Sire.
-    2. If the animal appears as Dam_ID, it is treated as Female/Dam.
-    3. If role is not found, use common ID patterns.
+    1. Explicit Sex column if available.
+    2. Sire_ID / Dam_ID role in pedigree.
+    3. Common ID patterns.
+    4. Unidentified.
     """
+    explicit = normalize_sex_value(explicit_sex)
+    if explicit:
+        return explicit
+
     animal_text = str(animal_id).strip()
     animal_upper = animal_text.upper()
 
     male_keywords = [
         "SIRE", "BULL", "MALE", "PEJANTAN", "JANTAN",
-        "M_", "M-", "M.", "L_", "L-", "L."
+        "ROOSTER", "COCK", "M_", "M-", "M.", "L_", "L-", "L."
     ]
 
     female_keywords = [
         "DAM", "COW", "FEMALE", "INDUK", "BETINA",
-        "F_", "F-", "F.", "P_", "P-", "P."
+        "HEN", "F_", "F-", "F.", "P_", "P-", "P."
     ]
 
     in_sire = animal_text in sire_role_ids
@@ -979,6 +1370,7 @@ def detect_sex_role(animal_id: str, sire_role_ids: set, dam_role_ids: set) -> st
 def add_sex_role_column(result_df: pd.DataFrame) -> pd.DataFrame:
     """
     Adds Sex_Role column to make male and female identification easier.
+    Uses explicit Sex column first if available.
     """
     df = result_df.copy()
 
@@ -996,9 +1388,15 @@ def add_sex_role_column(result_df: pd.DataFrame) -> pd.DataFrame:
         .loc[lambda s: ~s.str.lower().isin(UNKNOWN_VALUES)]
     )
 
-    df["Sex_Role"] = df["Animal_ID"].astype(str).apply(
-        lambda x: detect_sex_role(x, sire_role_ids, dam_role_ids)
-    )
+    if "Sex" in df.columns:
+        df["Sex_Role"] = df.apply(
+            lambda r: detect_sex_role(r["Animal_ID"], sire_role_ids, dam_role_ids, r.get("Sex")),
+            axis=1,
+        )
+    else:
+        df["Sex_Role"] = df["Animal_ID"].astype(str).apply(
+            lambda x: detect_sex_role(x, sire_role_ids, dam_role_ids)
+        )
 
     return df
 
@@ -2065,15 +2463,42 @@ def generate_breeder_summary_pdf(
     intensity_value: float,
     depression_rate_value: float,
     safe_f_threshold: float = 6.25,
+    farm_name: str = "Farm / Breeding Unit",
+    breeder_name: str = "Breeder / Manager",
+    species: str = "Livestock",
+    report_notes: str = "",
 ):
     """
-    Creates a complete breeder-friendly PDF summary report.
+    Creates a complete official breeder-friendly PDF report.
+
+    Report sections:
+    - cover page
+    - farm name
+    - breeder name
+    - analysis date
+    - species
+    - population summary
+    - charts
+    - top candidates
+    - mating plan
+    - pure line plan
+    - risk warning
+    - final recommendation
+    - signature section
     """
     if not REPORTLAB_AVAILABLE:
         return None
 
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=28, leftMargin=28, topMargin=28, bottomMargin=28)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=28,
+        leftMargin=28,
+        topMargin=28,
+        bottomMargin=28,
+    )
+
     styles = getSampleStyleSheet()
     elements = []
 
@@ -2086,23 +2511,111 @@ def generate_breeder_summary_pdf(
         safe_f_threshold=safe_f_threshold,
     )
 
+    # Local imports keep compatibility if reportlab is not installed.
+    from reportlab.platypus import PageBreak
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.lib.units import inch
+
     title_style = styles["Heading1"]
     title_style.alignment = 1
 
-    elements.append(Paragraph("BREEDER SUMMARY & CONCLUSION REPORT", title_style))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"<b>Analysis time:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
-    elements.append(Paragraph(f"<b>Overall status:</b> {summary['overall_status']}", styles["Normal"]))
+    subtitle_style = styles["Heading2"]
+    subtitle_style.alignment = 1
+
+    normal_center = styles["Normal"].clone("NormalCenter")
+    normal_center.alignment = 1
+
+    small_style = styles["Normal"].clone("SmallStyle")
+    small_style.fontSize = 8
+    small_style.leading = 10
+
+    analysis_date = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+
+    # ============================================================
+    # COVER PAGE
+    # ============================================================
+    elements.append(Spacer(1, 80))
+    elements.append(Paragraph("OFFICIAL BREEDING ANALYSIS REPORT", title_style))
     elements.append(Spacer(1, 12))
+    elements.append(Paragraph("Pedigree, Inbreeding, EBV, Mating, and Pure-Line Evaluation", subtitle_style))
+    elements.append(Spacer(1, 40))
 
-    elements.append(Paragraph("<b>1. Executive Conclusion</b>", styles["Heading2"]))
+    cover_data = [
+        ["Farm / Breeding Unit", farm_name],
+        ["Breeder / Manager", breeder_name],
+        ["Species", species],
+        ["Analysis Date", analysis_date],
+        ["Safe F Threshold", f"{safe_f_threshold:.2f}%"],
+        ["Heritability (h²)", f"{h2_value:.2f}"],
+        ["Selection Intensity (i)", f"{intensity_value:.2f}"],
+        ["Depression Rate", f"{depression_rate_value:.2f} per 1% F"],
+    ]
+
+    cover_table = Table(cover_data, colWidths=[170, 280])
+    cover_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (0, -1), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#f8fafc")),
+        ("GRID", (0, 0), (-1, -1), 0.6, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (1, 0), (1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
+    ]))
+    elements.append(cover_table)
+    elements.append(Spacer(1, 45))
+
+    elements.append(Paragraph(
+        "This report is generated as a decision-support document for livestock breeding management. "
+        "It summarizes pedigree quality, genetic risk, estimated breeding value, mating recommendations, "
+        "and pure-line pyramid readiness based on the uploaded dataset.",
+        normal_center,
+    ))
+
+    if report_notes:
+        elements.append(Spacer(1, 18))
+        elements.append(Paragraph("<b>Report Notes</b>", styles["Heading3"]))
+        elements.append(Paragraph(str(report_notes), styles["Normal"]))
+
+    elements.append(Spacer(1, 80))
+    elements.append(Paragraph(
+        "Generated by Breeding & Inbreeding Analytics System",
+        normal_center,
+    ))
+
+    elements.append(PageBreak())
+
+    # ============================================================
+    # EXECUTIVE SUMMARY
+    # ============================================================
+    elements.append(Paragraph("1. Executive Conclusion", styles["Heading1"]))
+    elements.append(Paragraph(f"<b>Overall Status:</b> {summary['overall_status']}", styles["Normal"]))
+    elements.append(Spacer(1, 6))
     elements.append(Paragraph(summary["conclusion"], styles["Normal"]))
-    elements.append(Spacer(1, 8))
+    elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>2. Population Summary</b>", styles["Heading2"]))
+    if summary["warning_count"] > 0 or summary["very_high_risk"] > 0:
+        warning_text = (
+            f"<b>Risk Warning:</b> The dataset contains {summary['warning_count']} reproduction warning(s) "
+            f"and {summary['very_high_risk']} animal(s) with very high inbreeding risk. "
+            "These animals should not be prioritized as breeding nucleus candidates."
+        )
+        elements.append(Paragraph(warning_text, styles["Normal"]))
+        elements.append(Spacer(1, 10))
+
+    # ============================================================
+    # POPULATION SUMMARY
+    # ============================================================
+    elements.append(Paragraph("2. Population Summary", styles["Heading1"]))
 
     pop_data = [
         ["Parameter", "Value"],
+        ["Farm / Breeding Unit", farm_name],
+        ["Breeder / Manager", breeder_name],
+        ["Species", species],
+        ["Analysis Date", analysis_date],
         ["Total animals", str(summary["total"])],
         ["Inbred animals", str(summary["inbred"])],
         ["Average inbreeding F", f"{summary['avg_f']:.2f}%"],
@@ -2113,42 +2626,120 @@ def generate_breeder_summary_pdf(
         ["Reproduction warnings", str(summary["warning_count"])],
     ]
 
-    pop_table = Table(pop_data, colWidths=[220, 230], repeatRows=1)
+    pop_table = Table(pop_data, colWidths=[220, 260], repeatRows=1)
     pop_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     elements.append(pop_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 12))
 
-    elements.append(Paragraph("<b>3. Inbreeding Risk Distribution</b>", styles["Heading2"]))
+    # ============================================================
+    # CHARTS
+    # ============================================================
+    elements.append(Paragraph("3. Charts", styles["Heading1"]))
 
-    risk_data = [
-        ["Risk Category", "Count"],
-        ["Low risk: 0 < F < 6.25%", str(summary["low_risk"])],
-        ["Moderate risk: 6.25% <= F < 12.5%", str(summary["moderate_risk"])],
-        ["High risk: 12.5% <= F < 25%", str(summary["high_risk"])],
-        ["Very high risk: F >= 25%", str(summary["very_high_risk"])],
+    chart_wrap = Table([["Inbreeding Risk Distribution", "Classification Distribution"]], colWidths=[240, 240])
+    chart_wrap.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(chart_wrap)
+    elements.append(Spacer(1, 4))
+
+    # Bar chart: inbreeding risk
+    risk_labels = ["Low", "Moderate", "High", "Very High"]
+    risk_values = [
+        summary["low_risk"],
+        summary["moderate_risk"],
+        summary["high_risk"],
+        summary["very_high_risk"],
     ]
 
-    risk_table = Table(risk_data, colWidths=[300, 150], repeatRows=1)
+    risk_drawing = Drawing(230, 160)
+    risk_chart = VerticalBarChart()
+    risk_chart.x = 30
+    risk_chart.y = 30
+    risk_chart.height = 100
+    risk_chart.width = 170
+    risk_chart.data = [risk_values]
+    risk_chart.categoryAxis.categoryNames = risk_labels
+    risk_chart.valueAxis.valueMin = 0
+    risk_chart.valueAxis.valueMax = max(risk_values + [1])
+    risk_chart.valueAxis.valueStep = max(1, int(max(risk_values + [1]) / 5) or 1)
+    risk_chart.bars[0].fillColor = colors.HexColor("#2563eb")
+    risk_chart.categoryAxis.labels.fontSize = 7
+    risk_chart.valueAxis.labels.fontSize = 7
+    risk_drawing.add(risk_chart)
+
+    # Pie chart: classification
+    class_counts = summary["class_counts"]
+    class_drawing = Drawing(230, 160)
+    if class_counts:
+        pie = Pie()
+        pie.x = 55
+        pie.y = 25
+        pie.width = 110
+        pie.height = 110
+        pie.data = list(class_counts.values())
+        pie.labels = [str(k)[:14] for k in class_counts.keys()]
+        pie.slices.strokeWidth = 0.5
+        class_drawing.add(pie)
+    else:
+        # Fallback empty chart text is avoided due to reportlab drawing complexity.
+        pass
+
+    charts_table = Table([[risk_drawing, class_drawing]], colWidths=[240, 240])
+    charts_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+    ]))
+    elements.append(charts_table)
+    elements.append(Spacer(1, 12))
+
+    # ============================================================
+    # RISK SUMMARY
+    # ============================================================
+    elements.append(Paragraph("4. Risk Warning and Inbreeding Distribution", styles["Heading1"]))
+
+    risk_data = [
+        ["Risk Category", "Count", "Interpretation"],
+        ["Low risk: 0 < F < 6.25%", str(summary["low_risk"]), "Generally safe, monitor across generations."],
+        ["Moderate risk: 6.25% <= F < 12.5%", str(summary["moderate_risk"]), "Use caution and avoid repeated related mating."],
+        ["High risk: 12.5% <= F < 25%", str(summary["high_risk"]), "Not preferred for breeding nucleus."],
+        ["Very high risk: F >= 25%", str(summary["very_high_risk"]), "Avoid as breeding stock."],
+        ["Reproduction warning", str(summary["warning_count"]), "Check sire-daughter or close-relative mating."],
+    ]
+
+    risk_table = Table(risk_data, colWidths=[170, 60, 250], repeatRows=1)
     risk_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#991b1b")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
     elements.append(risk_table)
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>4. Classification Summary</b>", styles["Heading2"]))
+    # ============================================================
+    # CLASSIFICATION SUMMARY
+    # ============================================================
+    elements.append(Paragraph("5. Classification Summary", styles["Heading1"]))
+
     class_rows = [["Classification", "Count"]]
     for label, count in summary["class_counts"].items():
         class_rows.append([str(label), str(count)])
+
+    if len(class_rows) == 1:
+        class_rows.append(["No classification available", "0"])
 
     class_table = Table(class_rows, colWidths=[300, 150], repeatRows=1)
     class_table.setStyle(TableStyle([
@@ -2161,8 +2752,12 @@ def generate_breeder_summary_pdf(
     elements.append(class_table)
     elements.append(Spacer(1, 10))
 
+    # ============================================================
+    # PHENOTYPE AND SELECTION RESPONSE
+    # ============================================================
+    elements.append(Paragraph("6. Phenotype and Selection Response", styles["Heading1"]))
+
     phenotype = summary["phenotype_summary"]
-    elements.append(Paragraph("<b>5. Phenotype and Selection Response</b>", styles["Heading2"]))
     if phenotype["available"]:
         phenotype_rows = [
             ["Parameter", "Value"],
@@ -2171,7 +2766,7 @@ def generate_breeder_summary_pdf(
             ["Selection response R", f"{phenotype['selection_response']:.4f}" if phenotype["selection_response"] is not None else "-"],
             ["Next generation estimate", f"{phenotype['next_generation_estimate']:.4f}" if phenotype["next_generation_estimate"] is not None else "-"],
         ]
-        phenotype_table = Table(phenotype_rows, colWidths=[250, 200], repeatRows=1)
+        phenotype_table = Table(phenotype_rows, colWidths=[250, 220], repeatRows=1)
         phenotype_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -2181,60 +2776,80 @@ def generate_breeder_summary_pdf(
         ]))
         elements.append(phenotype_table)
     else:
-        elements.append(Paragraph("Phenotype data is not available or not valid, so selection response could not be estimated.", styles["Normal"]))
+        elements.append(Paragraph(
+            "Phenotype data is not available or not valid, so selection response could not be estimated.",
+            styles["Normal"],
+        ))
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>6. Top Selection Candidates</b>", styles["Heading2"]))
-    selection_df = summary["selection_df"].head(10)
+    # ============================================================
+    # TOP CANDIDATES
+    # ============================================================
+    elements.append(Paragraph("7. Top Breeding Candidates", styles["Heading1"]))
+
+    selection_df = summary["selection_df"].head(15)
     if not selection_df.empty:
         selection_rows = [["Animal ID", "Sex/Role", "EBV", "F (%)", "Classification"]]
         for _, row in selection_df.iterrows():
             selection_rows.append([
                 str(row["Animal_ID"]),
-                str(row.get("Sex_Role", "-")),
+                str(row.get("Sex_Role", "-"))[:24],
                 f"{row['EBV']:.4f}",
                 f"{row['Inbreeding_%']:.2f}",
-                str(row["Classification"]),
+                str(row["Classification"])[:22],
             ])
-        selection_table = Table(selection_rows, colWidths=[90, 140, 70, 70, 120], repeatRows=1)
+        selection_table = Table(selection_rows, colWidths=[85, 145, 70, 60, 120], repeatRows=1)
         selection_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
         elements.append(selection_table)
     else:
         elements.append(Paragraph("No strong selection candidates were detected under the current criteria.", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>7. Priority Culling / Non-Breeding Candidates</b>", styles["Heading2"]))
-    culling_df = summary["culling_df"].head(10)
+    # ============================================================
+    # PRIORITY CULLING / NON-BREEDING
+    # ============================================================
+    elements.append(Paragraph("8. Priority Non-Breeding / Culling Candidates", styles["Heading1"]))
+
+    culling_df = summary["culling_df"].head(15)
     if not culling_df.empty:
         culling_rows = [["Animal ID", "EBV", "F (%)", "Warning", "Classification"]]
         for _, row in culling_df.iterrows():
+            warning = str(row.get("Reproduction_Warning", "-"))
+            if not warning:
+                warning = "-"
             culling_rows.append([
                 str(row["Animal_ID"]),
                 f"{row['EBV']:.4f}",
                 f"{row['Inbreeding_%']:.2f}",
-                str(row.get("Reproduction_Warning", "-"))[:30],
-                str(row["Classification"]),
+                warning[:30],
+                str(row["Classification"])[:20],
             ])
-        culling_table = Table(culling_rows, colWidths=[90, 70, 70, 150, 110], repeatRows=1)
+        culling_table = Table(culling_rows, colWidths=[85, 65, 60, 170, 100], repeatRows=1)
         culling_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dc2626")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
         elements.append(culling_table)
     else:
         elements.append(Paragraph("No priority culling candidates were detected.", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>8. Best Mating Simulation</b>", styles["Heading2"]))
+    # ============================================================
+    # MATING PLAN
+    # ============================================================
+    elements.append(Paragraph("9. Mating Plan", styles["Heading1"]))
+
     best_pair = summary["best_pair"]
     if best_pair:
         mating_text = (
@@ -2242,14 +2857,42 @@ def generate_breeder_summary_pdf(
             f"female/dam <b>{best_pair['Suggested_Dam']}</b>. "
             f"Predicted offspring F: <b>{best_pair['Predicted_Offspring_F_%']:.2f}%</b>. "
             f"Expected offspring EBV: <b>{best_pair['Expected_Offspring_EBV']:.4f}</b>. "
+            f"Risk level: <b>{best_pair['Risk_Level']}</b>. "
             f"Decision: <b>{best_pair['Decision']}</b>."
         )
         elements.append(Paragraph(mating_text, styles["Normal"]))
+        elements.append(Spacer(1, 6))
+
+        mating_pairs = summary["mating_pairs"].head(10)
+        if not mating_pairs.empty:
+            mating_rows = [["Male/Sire", "Female/Dam", "F (%)", "Expected EBV", "Decision"]]
+            for _, row in mating_pairs.iterrows():
+                mating_rows.append([
+                    str(row["Suggested_Sire"]),
+                    str(row["Suggested_Dam"]),
+                    f"{row['Predicted_Offspring_F_%']:.2f}",
+                    f"{row['Expected_Offspring_EBV']:.4f}",
+                    str(row["Decision"])[:28],
+                ])
+            mating_table = Table(mating_rows, colWidths=[90, 90, 60, 90, 150], repeatRows=1)
+            mating_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            elements.append(mating_table)
     else:
         elements.append(Paragraph("No mating simulation could be generated from the current dataset.", styles["Normal"]))
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>9. Pure Line / Stock Pyramid Summary</b>", styles["Heading2"]))
+    # ============================================================
+    # PURE LINE PLAN
+    # ============================================================
+    elements.append(Paragraph("10. Pure Line Plan: GGPS, GPS, PS, and FS", styles["Heading1"]))
+
     selected_lines = summary["selected_lines"]
     if not selected_lines.empty:
         line_rows = [["Line", "GGPS Male/Sire", "GGPS Female/Dam", "F (%)", "Expected EBV"]]
@@ -2261,7 +2904,7 @@ def generate_breeder_summary_pdf(
                 f"{row['GGPS_Expected_F_%']:.2f}",
                 f"{row['GGPS_Expected_EBV']:.4f}",
             ])
-        line_table = Table(line_rows, colWidths=[60, 110, 110, 70, 100], repeatRows=1)
+        line_table = Table(line_rows, colWidths=[55, 120, 120, 60, 100], repeatRows=1)
         line_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#7c3aed")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
@@ -2271,21 +2914,68 @@ def generate_breeder_summary_pdf(
         ]))
         elements.append(line_table)
         elements.append(Spacer(1, 6))
-        elements.append(Paragraph("Recommended structure: GGPS pure lines are maintained separately, GPS multiplies each line, PS uses controlled inter-line crossing, and FS is terminal commercial stock.", styles["Normal"]))
+        elements.append(Paragraph(
+            "Recommended structure: keep GGPS/GPS as pure-line nucleus and multiplication stock, "
+            "use PS as controlled inter-line parent stock, and use FS as terminal commercial stock only.",
+            styles["Normal"],
+        ))
     else:
-        elements.append(Paragraph("A complete pure-line pyramid could not be generated. More unrelated male and female founders are recommended.", styles["Normal"]))
+        elements.append(Paragraph(
+            "A complete pure-line pyramid could not be generated. More unrelated male and female founders are recommended.",
+            styles["Normal"],
+        ))
     elements.append(Spacer(1, 10))
 
-    elements.append(Paragraph("<b>10. Practical Recommendations</b>", styles["Heading2"]))
-    for rec in summary["recommendations"]:
-        elements.append(Paragraph(f"- {rec}", styles["Normal"]))
+    # ============================================================
+    # FINAL RECOMMENDATION
+    # ============================================================
+    elements.append(Paragraph("11. Final Recommendation", styles["Heading1"]))
 
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("<b>Final Note</b>", styles["Heading2"]))
+    for idx, rec in enumerate(summary["recommendations"], start=1):
+        elements.append(Paragraph(f"{idx}. {rec}", styles["Normal"]))
+
+    elements.append(Spacer(1, 8))
     elements.append(Paragraph(
-        "This report is a decision-support output based on available pedigree and phenotype data. "
-        "For long-term breeding programs, validate results with field performance, health records, reproductive records, and expert review.",
+        "Final note: this report is a decision-support output based on available pedigree and phenotype data. "
+        "Field health, fertility, management, environment, and breeder objectives must still be considered before implementation.",
         styles["Normal"],
+    ))
+
+    # ============================================================
+    # SIGNATURE SECTION
+    # ============================================================
+    elements.append(PageBreak())
+    elements.append(Paragraph("12. Signature Section", styles["Heading1"]))
+    elements.append(Paragraph(
+        "This section can be completed after the report has been reviewed by the breeder, farm manager, or breeding consultant.",
+        styles["Normal"],
+    ))
+    elements.append(Spacer(1, 40))
+
+    signature_data = [
+        ["Prepared by", "Reviewed by", "Approved by"],
+        ["", "", ""],
+        ["Name:", "Name:", "Name:"],
+        ["Position:", "Position:", "Position:"],
+        ["Date:", "Date:", "Date:"],
+        ["Signature:", "Signature:", "Signature:"],
+    ]
+
+    signature_table = Table(signature_data, colWidths=[160, 160, 160], rowHeights=[24, 70, 24, 24, 24, 55])
+    signature_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+        ("GRID", (0, 0), (-1, -1), 0.7, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements.append(signature_table)
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph(
+        f"Report generated for {farm_name} | Species: {species} | Analysis date: {analysis_date}",
+        small_style,
     ))
 
     doc.build(elements)
@@ -2384,6 +3074,61 @@ def render_header():
     """, unsafe_allow_html=True)
 
 
+
+def render_section_header(title: str, description: str = "", icon: str = "📌"):
+    """
+    Consistent section header for better readability.
+    """
+    st.markdown(f"""
+    <div class="info-card" style="border-left: 5px solid #3b82f6;">
+        <h3 style="margin-top:0;">{icon} {title}</h3>
+        <p style="margin-bottom:0; color: var(--text-sub);">{description}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_small_note(text: str):
+    """
+    Compact note for breeder-friendly guidance.
+    """
+    st.caption(text)
+
+
+def render_workflow_overview():
+    """
+    Shows the main workflow of the application.
+    """
+    st.markdown("""
+    <div class="info-card">
+        <b>Recommended Workflow</b>
+        <ol>
+            <li><b>Upload & Map Data:</b> choose Animal_ID, Sire_ID, Dam_ID, phenotype, and optional metadata.</li>
+            <li><b>Check Data Quality:</b> review completeness, warnings, and recording quality.</li>
+            <li><b>Read Dashboard:</b> understand population size, EBV, inbreeding, and classification.</li>
+            <li><b>Explore Pedigree:</b> inspect family graph, high-risk animals, and relationship matrix.</li>
+            <li><b>Simulate Mating:</b> choose safe male-female combinations before breeding.</li>
+            <li><b>Plan Pure Lines:</b> simulate GGPS, GPS, PS, and FS structure when needed.</li>
+            <li><b>Download Report:</b> export breeder-friendly PDF for documentation.</li>
+        </ol>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_tab_help(title: str, points: list):
+    """
+    Compact explanation block for each tab.
+    """
+    bullet_html = "".join([f"<li>{point}</li>" for point in points])
+    st.markdown(f"""
+    <div class="info-card" style="border-left: 5px solid #64748b;">
+        <b>{title}</b>
+        <ul style="margin-bottom:0;">
+            {bullet_html}
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def main():
     favicon_path = pathlib.Path(__file__).parent / "assets" / "favicon.svg"
 
@@ -2399,8 +3144,26 @@ def main():
     apply_custom_css()
     render_header()
 
+    with st.expander("📌 Application Workflow Overview", expanded=False):
+        render_workflow_overview()
+
     with st.sidebar:
-        st.markdown("## Configuration")
+        st.markdown("## 🧭 Application Setup")
+
+        with st.expander("How to use this software", expanded=False):
+            st.markdown("""
+            **Main workflow:**
+            1. Select sample data or upload your own file.
+            2. Map required columns.
+            3. Add optional metadata such as Sex, Age, Line, and Generation.
+            4. Select traits and weights if using Multi-Trait Selection Index.
+            5. Review dashboard, mating plan, pure-line plan, and PDF report.
+
+            **Required columns:** `Animal_ID`, `Sire_ID`, `Dam_ID`  
+            **Recommended columns:** `Sex`, `Age`, `Line`, `Generation`, `Phenotype`
+            """)
+
+        st.markdown("### 1. Data Source")
 
         mode = st.radio(
             "Select Data Source",
@@ -2440,7 +3203,7 @@ def main():
 
         cols = list(raw_df.columns)
 
-        st.markdown("### Column Mapping")
+        st.markdown("### 2. Required Column Mapping")
         id_col = st.selectbox("Animal_ID Column", cols, index=0)
         sire_col = st.selectbox("Sire_ID Column", cols, index=1 if len(cols) > 1 else 0)
         dam_col = st.selectbox("Dam_ID Column", cols, index=2 if len(cols) > 2 else 0)
@@ -2454,16 +3217,90 @@ def main():
 
         pheno_val = None if phenotype_col == "-" else phenotype_col
 
-        st.markdown("### Genetic Parameters")
+        st.markdown("### 3. Optional Breeding Metadata")
+        sex_col = st.selectbox(
+            "Sex Column - Optional",
+            ["-"] + cols,
+            index=cols.index("Sex") + 1 if "Sex" in cols else 0,
+            help="Use values such as Male/Female, Jantan/Betina, M/F, L/P."
+        )
+        age_col = st.selectbox(
+            "Age Column - Optional",
+            ["-"] + cols,
+            index=cols.index("Age") + 1 if "Age" in cols else 0,
+            help="Age can be written in weeks, months, or years depending on species."
+        )
+        line_col = st.selectbox(
+            "Line Column - Optional",
+            ["-"] + cols,
+            index=cols.index("Line") + 1 if "Line" in cols else 0,
+            help="Useful for pure-line systems such as Line A, Line B, Line C, Line D."
+        )
+        generation_col = st.selectbox(
+            "Generation Column - Optional",
+            ["-"] + cols,
+            index=cols.index("Generation") + 1 if "Generation" in cols else 0,
+            help="Examples: Founder, G0, G1, GGPS, GPS, PS, FS."
+        )
+
+        sex_val = None if sex_col == "-" else sex_col
+        age_val = None if age_col == "-" else age_col
+        line_val = None if line_col == "-" else line_col
+        generation_val = None if generation_col == "-" else generation_col
+
+        st.markdown("### 4. Multi-Trait Selection Index")
+        excluded_trait_cols = {id_col, sire_col, dam_col, sex_val, age_val, line_val, generation_val}
+        candidate_trait_cols = [
+            c for c in cols
+            if c not in excluded_trait_cols
+        ]
+
+        default_traits = []
+        for candidate in ["Phenotype", "Body_Weight", "Egg_Production", "Egg_Weight", "Fertility", "Hatchability", "Survival_Rate"]:
+            if candidate in candidate_trait_cols:
+                default_traits.append(candidate)
+
+        multi_trait_cols = st.multiselect(
+            "Additional Trait Columns - Optional",
+            candidate_trait_cols,
+            default=default_traits[:4],
+            help="Select numeric traits to build a simple multi-trait selection index."
+        )
+
+        trait_weights = {}
+        if multi_trait_cols:
+            with st.expander("Trait Weights", expanded=False):
+                st.caption("Weights are normalized automatically. Higher weight means the trait is more important.")
+                for trait in multi_trait_cols:
+                    trait_weights[trait] = st.slider(
+                        f"Weight: {trait}",
+                        0.0,
+                        1.0,
+                        1.0 / max(len(multi_trait_cols), 1),
+                        0.05,
+                    )
+
+        st.markdown("### 5. Genetic Parameters")
         h2 = st.slider("Heritability (h²)", 0.0, 1.0, 0.3, 0.05)
         depression_rate = st.slider("Inbreeding Depression Rate per 1% F", 0.0, 5.0, 1.0, 0.1)
 
-        st.markdown("### Selection Parameters")
+        st.markdown("### 6. Selection Parameters")
         intensity = st.slider("Selection Intensity (i)", 0.0, 3.0, 1.5, 0.1)
 
     try:
         try:
-            internal = standardize_input(raw_df, id_col, sire_col, dam_col, pheno_val)
+            internal = standardize_input(
+                raw_df,
+                id_col,
+                sire_col,
+                dam_col,
+                phenotype_col=pheno_val,
+                sex_col=sex_val,
+                age_col=age_val,
+                line_col=line_val,
+                generation_col=generation_val,
+                trait_cols=multi_trait_cols,
+            )
         except Exception as input_error:
             st.error("The uploaded data format is not valid yet.")
             st.write("Please check your column mapping and required data format.")
@@ -2493,6 +3330,7 @@ def main():
                 h2=h2,
                 depression_rate=depression_rate,
             )
+            res_df = merge_optional_metadata(internal, res_df)
         except ValueError as calc_error:
             st.error("The pedigree structure could not be calculated.")
             st.write("Please fix the parent-child relationship records according to the rules below.")
@@ -2517,18 +3355,56 @@ def main():
         res_display_data = res_df[res_df["Data_Type"] == "Input data"].copy()
         res_display_data = add_sex_role_column(res_display_data)
 
+        trait_column_map = {
+            original: f"Trait_{str(original).strip().replace(' ', '_')}"
+            for original in multi_trait_cols
+        }
+        selected_trait_result_cols = [
+            mapped for mapped in trait_column_map.values()
+            if mapped in res_display_data.columns
+        ]
+
+        res_display_data = calculate_multi_trait_selection_index(
+            res_display_data,
+            selected_trait_result_cols,
+            {f"Trait_{str(k).strip().replace(' ', '_')}": v for k, v in trait_weights.items()},
+        )
+
+        res_df = res_df.merge(
+            res_display_data[["Animal_ID", "Sex_Role", "Selection_Index", "Selection_Index_Rank"]],
+            on="Animal_ID",
+            how="left",
+            suffixes=("", "_display")
+        )
+
+        data_quality = calculate_data_quality_score(res_display_data)
+
         tabs = st.tabs([
-            "Results & Analysis",
-            "Genetic Visualization",
-            "Pedigree Chart",
-            "Relationship Matrix",
-            "Heterosis & Crossbreeding",
-            "Pure Line Pyramid",
-            "Summary & Conclusion",
-            "Real-World Implementation",
+            "1. Dashboard",
+            "2. Genetic Charts",
+            "3. Pedigree Explorer",
+            "4. Relationship Matrix",
+            "5. Heterosis",
+            "6. Pure Line Pyramid",
+            "7. Breeder Report",
+            "8. Field Guide",
         ])
 
         with tabs[0]:
+            render_section_header(
+                "Dashboard",
+                "Main summary of population status, data quality, inbreeding, EBV, selection index, and key breeder decisions.",
+                "📊"
+            )
+            render_tab_help(
+                "How to read this dashboard",
+                [
+                    "Start with Data Quality Score before trusting the analysis.",
+                    "Use Average F and Highest F to understand inbreeding pressure.",
+                    "Use Classification Distribution and Selection Index to identify useful breeding stock.",
+                    "Review selection and culling tables before making mating decisions."
+                ]
+            )
             st.subheader("Data Summary")
 
             total_animals = len(res_display_data)
@@ -2543,6 +3419,26 @@ def main():
             m2.metric("Inbred Animals", f"{inbred_animals}")
             m3.metric("Average F", f"{avg_f:.2f}%")
             m4.metric("Average EBV", f"{avg_ebv:.4f}")
+
+            st.markdown("### Data Quality Score")
+            dq1, dq2, dq3 = st.columns(3)
+            dq1.metric("Data Quality Score", f"{data_quality['score']:.2f}/100")
+            dq2.metric("Data Quality Grade", data_quality["grade"])
+            dq3.metric("Selected Traits", f"{len(selected_trait_result_cols)}")
+            st.info(data_quality["recommendation"])
+
+            with st.expander("Show Data Quality Details", expanded=False):
+                st.dataframe(data_quality["details"], hide_index=True, use_container_width=True)
+
+            if selected_trait_result_cols:
+                st.markdown("### Multi-Trait Selection Index")
+                st.caption("Selection_Index combines standardized selected traits and EBV. Higher values indicate better multi-trait breeding potential.")
+                top_index = res_display_data.sort_values("Selection_Index", ascending=False).head(10)
+                st.dataframe(
+                    top_index[["Animal_ID", "Sex_Role", "Selection_Index", "Selection_Index_Rank", "EBV", "Inbreeding_%", "Classification"]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
             st.markdown("### Livestock Classification Distribution")
 
@@ -2905,6 +3801,13 @@ def main():
                 max_pairs=max_sim_pairs,
             )
 
+            simulated_pairs = apply_blocked_mating_rules_to_pairs(
+                simulated_pairs,
+                res_display_data,
+                matrix_df,
+                max_safe_f=max_offspring_f,
+            )
+
             st.markdown("#### Recommended Mating Pairs and Offspring Simulation")
 
             if simulated_pairs.empty:
@@ -3076,6 +3979,19 @@ def main():
                 """)
 
         with tabs[1]:
+            render_section_header(
+                "Genetic Charts",
+                "Visual summary of inbreeding distribution, EBV ranking, and phenotype relationship.",
+                "📈"
+            )
+            render_tab_help(
+                "What this tab shows",
+                [
+                    "Inbreeding distribution helps detect genetic risk concentration.",
+                    "Top EBV chart helps identify high genetic potential animals.",
+                    "Scatter plot helps compare phenotype, inbreeding, classification, and EBV."
+                ]
+            )
             st.subheader("Genetic Distribution Visualization")
 
             v1, v2 = st.columns(2)
@@ -3140,6 +4056,19 @@ def main():
                 st.info("No phenotype column is available.")
 
         with tabs[2]:
+            render_section_header(
+                "Pedigree Explorer",
+                "Interactive pedigree exploration for family subgraph, high-risk animals, selection candidates, and full graph export.",
+                "🌳"
+            )
+            render_tab_help(
+                "Recommended use for large datasets",
+                [
+                    "Use family subgraph to inspect one animal without rendering thousands of nodes.",
+                    "Use high-risk filter to quickly find problematic relationships.",
+                    "Use full visualization HTML export for complete external review."
+                ]
+            )
             st.subheader("Pedigree Chart Visualization")
 
             st.markdown("""
@@ -3364,6 +4293,19 @@ def main():
             4. Use **Full Pedigree DOT** for complete external visualization when the dataset contains thousands of animals.
             """)
         with tabs[3]:
+            render_section_header(
+                "Relationship Matrix",
+                "Matrix of genetic relationships between animals. Lower values are preferred for safe mating.",
+                "🧬"
+            )
+            render_tab_help(
+                "How to use the matrix",
+                [
+                    "Use values close to zero for safer sire-dam pairing.",
+                    "Avoid high relationship values when designing mating plans.",
+                    "For large data, download the matrix CSV instead of rendering all rows."
+                ]
+            )
             st.subheader("Additive Relationship Matrix")
 
             st.write(
@@ -3381,6 +4323,19 @@ def main():
                 st.dataframe(matrix_df, use_container_width=True)
 
         with tabs[4]:
+            render_section_header(
+                "Heterosis & Crossbreeding",
+                "Evaluation of offspring performance compared with parental average and crossbreeding potential.",
+                "🔀"
+            )
+            render_tab_help(
+                "Important interpretation",
+                [
+                    "Positive heterosis can indicate useful crossbred performance.",
+                    "Do not use heterosis alone; always check EBV and inbreeding.",
+                    "Crossbreeding can restore diversity but may change pure-line structure."
+                ]
+            )
             st.subheader("Heterosis & Crossbreeding Analysis")
 
             if "Heterosis" in res_display_data.columns:
@@ -3433,6 +4388,19 @@ def main():
 
 
         with tabs[5]:
+            render_section_header(
+                "Pure Line Pyramid",
+                "Simulation of four-line breeding structure for GGPS, GPS, PS, and FS planning.",
+                "🏗️"
+            )
+            render_tab_help(
+                "Pure-line logic",
+                [
+                    "GGPS and GPS should maintain pure-line nucleus and multiplication stock.",
+                    "PS is produced through controlled inter-line crossing.",
+                    "FS should be treated as terminal commercial stock, not breeding nucleus."
+                ]
+            )
             st.subheader("Pure Line Simulation for GGPS, GPS, PS, and FS")
 
             st.markdown("""
@@ -3631,6 +4599,19 @@ def main():
 
 
         with tabs[6]:
+            render_section_header(
+                "Breeder Report",
+                "Breeder-friendly conclusion, candidate summary, mating recommendation, pure-line readiness, and official PDF export.",
+                "📄"
+            )
+            render_tab_help(
+                "What to do here",
+                [
+                    "Fill farm name, breeder name, species, and report notes before downloading PDF.",
+                    "Read executive status and conclusion first.",
+                    "Download the complete PDF as official breeding documentation."
+                ]
+            )
             st.subheader("Summary & Conclusion for Breeder")
 
             st.markdown("""
@@ -3645,6 +4626,40 @@ def main():
                 step=0.25,
                 help="This threshold is used to classify safe mating, selection candidates, and pure-line recommendations."
             )
+
+            st.markdown("### Report Identity")
+
+            meta_col1, meta_col2, meta_col3 = st.columns(3)
+
+            with meta_col1:
+                report_farm_name = st.text_input(
+                    "Farm Name",
+                    value="Farm / Breeding Unit",
+                    help="This will appear on the PDF cover page."
+                )
+
+            with meta_col2:
+                report_breeder_name = st.text_input(
+                    "Breeder / Manager Name",
+                    value="Breeder / Manager",
+                    help="This will appear on the PDF cover page."
+                )
+
+            with meta_col3:
+                report_species = st.selectbox(
+                    "Species",
+                    ["Chicken", "Cattle", "Goat", "Sheep", "Pig", "Duck", "Quail", "Custom / Other"],
+                    index=0,
+                    help="This will appear on the PDF report."
+                )
+
+            report_notes = st.text_area(
+                "Report Notes - Optional",
+                value="",
+                placeholder="Example: Evaluation for GGPS-GPS-PS-FS breeding program, 2026 batch.",
+                help="Optional note that will be printed on the cover page."
+            )
+
 
             breeder_summary = build_breeder_summary_data(
                 res_display_data,
@@ -3809,11 +4824,15 @@ def main():
                 intensity_value=intensity,
                 depression_rate_value=depression_rate,
                 safe_f_threshold=safe_summary_f,
+                farm_name=report_farm_name,
+                breeder_name=report_breeder_name,
+                species=report_species,
+                report_notes=report_notes,
             )
 
             if pdf_summary:
                 st.download_button(
-                    "Download Complete Breeder Summary PDF",
+                    "Download Official Breeding Report PDF",
                     pdf_summary,
                     "breeder_summary_conclusion_report.pdf",
                     "application/pdf",
@@ -3861,6 +4880,19 @@ def main():
 
 
         with tabs[7]:
+            render_section_header(
+                "Field Guide",
+                "Practical explanation of how pedigree breeding can be implemented in real poultry and cattle programs.",
+                "📚"
+            )
+            render_tab_help(
+                "Why this tab matters",
+                [
+                    "Explains why elite animals are difficult to identify in real life.",
+                    "Compares poultry and cattle implementation challenges.",
+                    "Gives a realistic step-by-step breeder workflow."
+                ]
+            )
             st.subheader("Real-World Implementation of Pedigree Breeding")
 
             st.markdown("""
