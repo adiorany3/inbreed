@@ -871,11 +871,12 @@ def main():
         
         st.info("""
         **Data Format:**
-        Ensure the file has columns:
+        Ensure the file has the following columns:
         - `Animal_ID` (Cattle ID)
         - `Sire_ID` (Sire ID)
-        - `Dam_ID` (Dam ID)Optional:
-            - `Phenotype` (Phenotype value for EBV calculation, example: milk yield, growth rate, etc.)
+        - `Dam_ID` (Dam ID)
+        - `Optional:`
+            - `Phenotype` (Phenotype value for EBV calculation, e.g., milk yield, growth rate, etc.)
 
         Use `-` for empty data.
         """)
