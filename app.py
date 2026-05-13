@@ -156,7 +156,7 @@ def analyze_hardy_weinberg(result_df: pd.DataFrame) -> Dict:
     status = "⚠️ Deviation Occurring (Not in Equilibrium)" if is_deviating else "✅ Near Equilibrium"
     
     insight = (
-        f"The average population inbreeding coefficient ($F_{{IS}}$) is {avg_f:.4f}. "
+        f"The average population inbreeding coefficient is {avg_f:.4f}. "
         "In population genetics, this value indicates the extent to which the population deviates from the ideal Hardy-Weinberg condition (random mating)."
     )
     
@@ -668,11 +668,69 @@ def generate_pdf(result_df, settings=None):
     elements.append(t_ped)
     elements.append(Spacer(1, 15))
 
+    # --- SECTION 7: SELECTION & CULLING RECOMMENDATIONS ---
+    elements.append(Paragraph("<b>7. Selection & Culling Recommendations:</b>", styles['Heading2']))
+    
+    # 7.1 Selection Candidates (Top 25% EBV & F < 6.25%)
+    threshold_ebv = result_df["EBV"].quantile(0.75)
+    selection_df = result_df[
+        (result_df["EBV"] >= threshold_ebv) & 
+        (result_df["Inbreeding_%"] < 6.25)
+    ].sort_values("EBV", ascending=False).head(20) # Top 20 for PDF
+    
+    elements.append(Paragraph(f"<b>Top Selection Candidates (Count: {len(selection_df)}):</b>", styles['Heading3']))
+    if not selection_df.empty:
+        sel_data = [["Animal_ID", "EBV", "F (%)", "Status"]]
+        for _, r in selection_df.iterrows():
+            sel_data.append([str(r["Animal_ID"]), f"{r['EBV']:.4f}", f"{r['Inbreeding_%']:.2f}", str(r["Classification"])])
+        
+        t_sel = Table(sel_data, colWidths=[100, 80, 80, 130])
+        t_sel.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#16a34a")), # Green
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 8)
+        ]))
+        elements.append(t_sel)
+    else:
+        elements.append(Paragraph("No candidates meet the strict selection criteria.", styles['Normal']))
+    
+    elements.append(Spacer(1, 10))
+    
+    # 7.2 Culling Candidates (F >= 25% OR Backcross OR Bottom 10% EBV)
+    threshold_low_ebv = result_df["EBV"].quantile(0.10)
+    culling_df = result_df[
+        (result_df["Inbreeding_%"] >= 25) | 
+        (result_df["Reproduction_Warning"] != "") |
+        (result_df["EBV"] <= threshold_low_ebv)
+    ].sort_values("Inbreeding_%", ascending=False).head(20) # Top 20 for PDF
+    
+    elements.append(Paragraph(f"<b>Priority Culling Candidates (Count: {len(culling_df)}):</b>", styles['Heading3']))
+    if not culling_df.empty:
+        cul_data = [["Animal_ID", "F (%)", "Warning", "Reason"]]
+        for _, r in culling_df.iterrows():
+            reason = "Low Genetic" if r["EBV"] <= threshold_low_ebv else "High Inbreeding"
+            if r["Reproduction_Warning"]: reason = "Backcross"
+            cul_data.append([str(r["Animal_ID"]), f"{r['Inbreeding_%']:.2f}", str(r["Reproduction_Warning"]), reason])
+        
+        t_cul = Table(cul_data, colWidths=[100, 80, 110, 100])
+        t_cul.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#dc2626")), # Red
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 8)
+        ]))
+        elements.append(t_cul)
+    else:
+        elements.append(Paragraph("No high-priority culling candidates found.", styles['Normal']))
+    
+    elements.append(Spacer(1, 20))
+
     # Permanent URL link with more explicit format
     link_url = "https://inbreeding.streamlit.app/"
     elements.append(Paragraph(f'<b>Access Full Visualization:</b> <a href="{link_url}" color="blue"><u>{link_url}</u></a>', styles['Normal']))
     elements.append(Spacer(1, 10))
-    elements.append(Paragraph("<i>Developed by: Galuh Adi Insani</i>", styles['Italic']))
+    elements.append(Paragraph("<i>Developed by: Galuh Adi Insani (Universitas Gadjah Mada)</i>", styles['Italic']))
     
     doc.build(elements)
     buffer.seek(0)
