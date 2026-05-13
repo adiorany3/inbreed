@@ -812,8 +812,10 @@ def generate_pdf(result_df, settings=None):
 
 
 def main():
+    favicon_path = pathlib.Path(__file__).parent / "assets" / "favicon.svg"
     st.set_page_config(
         page_title="Breeding & Inbreeding Analytics",
+        page_icon=str(favicon_path),
         layout="wide",
         initial_sidebar_state="expanded"
     )
