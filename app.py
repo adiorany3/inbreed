@@ -310,6 +310,201 @@ def calculate_stats(df: pd.DataFrame):
         return None
 
 
+
+def validate_input_data(df: pd.DataFrame, phenotype_enabled: bool = False) -> Dict:
+    """
+    Validates standardized pedigree data before calculation.
+    Returns a dictionary containing errors, warnings, and cleaned hints.
+    This function prevents long Streamlit tracebacks for common user input mistakes.
+    """
+    errors = []
+    warnings = []
+
+    required_cols = ["Animal_ID", "Sire_ID", "Dam_ID"]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+
+    if missing_cols:
+        errors.append(
+            f"Missing required column(s): {', '.join(missing_cols)}. "
+            "Please map Animal_ID, Sire_ID, and Dam_ID correctly."
+        )
+        return {"valid": False, "errors": errors, "warnings": warnings}
+
+    if df.empty:
+        errors.append("The uploaded file does not contain valid Animal_ID records.")
+        return {"valid": False, "errors": errors, "warnings": warnings}
+
+    # Empty Animal_ID
+    empty_animal = df["Animal_ID"].apply(is_unknown).sum()
+    if empty_animal > 0:
+        errors.append(
+            f"There are {empty_animal} row(s) with empty Animal_ID. "
+            "Every animal must have a unique Animal_ID."
+        )
+
+    # Duplicate Animal_ID
+    duplicated_ids = df["Animal_ID"][df["Animal_ID"].duplicated(keep=False)].dropna().astype(str).unique().tolist()
+    if duplicated_ids:
+        shown = ", ".join(duplicated_ids[:10])
+        more = "..." if len(duplicated_ids) > 10 else ""
+        errors.append(
+            f"Duplicate Animal_ID detected: {shown}{more}. "
+            "Animal_ID must be unique. Please rename or remove duplicate records."
+        )
+
+    # Animal cannot be its own parent
+    self_parent_rows = []
+    for _, row in df.iterrows():
+        animal = str(row["Animal_ID"]) if not is_unknown(row["Animal_ID"]) else None
+        sire = str(row["Sire_ID"]) if not is_unknown(row["Sire_ID"]) else None
+        dam = str(row["Dam_ID"]) if not is_unknown(row["Dam_ID"]) else None
+
+        if animal and (animal == sire or animal == dam):
+            self_parent_rows.append(animal)
+
+    if self_parent_rows:
+        shown = ", ".join(self_parent_rows[:10])
+        more = "..." if len(self_parent_rows) > 10 else ""
+        errors.append(
+            f"Animal cannot be its own parent. Problematic Animal_ID: {shown}{more}."
+        )
+
+    # Same sire and dam
+    same_parent_rows = []
+    for _, row in df.iterrows():
+        sire = str(row["Sire_ID"]) if not is_unknown(row["Sire_ID"]) else None
+        dam = str(row["Dam_ID"]) if not is_unknown(row["Dam_ID"]) else None
+        animal = str(row["Animal_ID"]) if not is_unknown(row["Animal_ID"]) else "-"
+
+        if sire and dam and sire == dam:
+            same_parent_rows.append(animal)
+
+    if same_parent_rows:
+        shown = ", ".join(same_parent_rows[:10])
+        more = "..." if len(same_parent_rows) > 10 else ""
+        warnings.append(
+            f"Sire_ID and Dam_ID are the same for: {shown}{more}. "
+            "Please verify the record because sire and dam should usually be different animals."
+        )
+
+    # Parent IDs not found in Animal_ID list are allowed as additional founders,
+    # but warn user so they understand how the app handles it.
+    animal_ids = set(df["Animal_ID"].dropna().astype(str))
+    parent_ids = set(df["Sire_ID"].dropna().astype(str)).union(set(df["Dam_ID"].dropna().astype(str)))
+    parent_ids = {p for p in parent_ids if not is_unknown(p)}
+
+    missing_parents = sorted(parent_ids - animal_ids)
+    if missing_parents:
+        shown = ", ".join(missing_parents[:10])
+        more = "..." if len(missing_parents) > 10 else ""
+        warnings.append(
+            f"{len(missing_parents)} parent ID(s) are not listed as Animal_ID: {shown}{more}. "
+            "The system will treat them as additional founders with unknown parents."
+        )
+
+    # Phenotype validation
+    if phenotype_enabled and "Phenotype" in df.columns:
+        pheno_raw = df["Phenotype"].copy()
+        non_empty_pheno = pheno_raw[~pheno_raw.apply(is_unknown)]
+
+        if non_empty_pheno.empty:
+            warnings.append(
+                "Phenotype column was selected but all phenotype values are empty. "
+                "EBV and selection response may not be informative."
+            )
+        else:
+            numeric_pheno = pd.to_numeric(non_empty_pheno, errors="coerce")
+            invalid_count = int(numeric_pheno.isna().sum())
+
+            if invalid_count > 0:
+                warnings.append(
+                    f"There are {invalid_count} non-numeric Phenotype value(s). "
+                    "Use numbers only, for example 450, 520.5, or 1200."
+                )
+
+    # Cycle check before matrix calculation
+    try:
+        parents_map = {}
+        for _, row in df.iterrows():
+            animal = None if is_unknown(row["Animal_ID"]) else str(row["Animal_ID"])
+            if not animal:
+                continue
+            sire = None if is_unknown(row["Sire_ID"]) else str(row["Sire_ID"])
+            dam = None if is_unknown(row["Dam_ID"]) else str(row["Dam_ID"])
+            parents_map[animal] = (sire, dam)
+
+        # Add missing parents as founders for cycle checking.
+        for parent in parent_ids:
+            parents_map.setdefault(parent, (None, None))
+
+        state = {}
+
+        def visit(animal, path_stack):
+            if animal is None:
+                return
+            status = state.get(animal, 0)
+            if status == 1:
+                cycle_path = " -> ".join(path_stack + [animal])
+                raise ValueError(cycle_path)
+            if status == 2:
+                return
+
+            state[animal] = 1
+            sire, dam = parents_map.get(animal, (None, None))
+            for parent in [sire, dam]:
+                if parent is not None:
+                    visit(parent, path_stack + [animal])
+            state[animal] = 2
+
+        for animal in list(parents_map.keys()):
+            visit(animal, [])
+
+    except ValueError as cycle:
+        errors.append(
+            f"Pedigree cycle detected: {cycle}. "
+            "Please check parent records. An animal cannot be its own ancestor."
+        )
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def show_input_validation_messages(validation_result: Dict):
+    """
+    Shows clean Streamlit notifications for invalid uploaded data.
+    """
+    if validation_result.get("errors"):
+        st.error("The uploaded data cannot be processed yet. Please fix the following issue(s):")
+        for err in validation_result["errors"]:
+            st.write(f"- {err}")
+
+    if validation_result.get("warnings"):
+        st.warning("The uploaded data can still be reviewed, but please check the following warning(s):")
+        for warn in validation_result["warnings"]:
+            st.write(f"- {warn}")
+
+    with st.expander("Correct Data Writing Rules", expanded=False):
+        st.markdown("""
+        **Required columns**
+        - `Animal_ID`: unique livestock ID. Must not be empty and must not be duplicated.
+        - `Sire_ID`: sire/father ID. Use `-` if unknown.
+        - `Dam_ID`: dam/mother ID. Use `-` if unknown.
+        - `Phenotype` *(optional)*: numeric performance value, such as body weight, milk yield, growth rate, or fertility score.
+
+        **Data writing rules**
+        1. Do not use the same `Animal_ID` more than once.
+        2. An animal cannot be listed as its own `Sire_ID` or `Dam_ID`.
+        3. Avoid using the same ID for `Sire_ID` and `Dam_ID`.
+        4. Use consistent spelling for every ID. Example: `BULL_01` should not also be written as `Bull01`.
+        5. Use `-` for unknown sire or dam.
+        6. If `Phenotype` is selected, write numeric values only, for example `450`, `520.5`, or `1200`.
+        7. Avoid pedigree cycles. Example: if A is the parent of B, B cannot also be the parent or ancestor of A.
+        """)
+
+
 def calculate(df_input, h2=0.3, depression_rate=1.0):
     animal_ids = set(df_input["Animal_ID"])
     parent_ids = set(df_input["Sire_ID"].dropna()).union(set(df_input["Dam_ID"].dropna()))
@@ -1692,6 +1887,412 @@ def make_pure_line_flow_dot(pyramid_df: pd.DataFrame) -> str:
     return "\n".join(dot)
 
 
+
+def build_breeder_summary_data(
+    result_df: pd.DataFrame,
+    matrix_df: pd.DataFrame,
+    h2_value: float,
+    intensity_value: float,
+    depression_rate_value: float,
+    safe_f_threshold: float = 6.25,
+) -> Dict:
+    """
+    Builds a breeder-friendly summary from analysis results.
+    """
+    df = result_df.copy()
+
+    total = len(df)
+    inbred = int((df["Inbreeding_%"] > 0).sum())
+    low_risk = int(((df["Inbreeding_%"] > 0) & (df["Inbreeding_%"] < 6.25)).sum())
+    moderate_risk = int(((df["Inbreeding_%"] >= 6.25) & (df["Inbreeding_%"] < 12.5)).sum())
+    high_risk = int(((df["Inbreeding_%"] >= 12.5) & (df["Inbreeding_%"] < 25)).sum())
+    very_high_risk = int((df["Inbreeding_%"] >= 25).sum())
+    warning_count = int((df["Reproduction_Warning"].astype(str) != "").sum())
+
+    avg_f = float(df["Inbreeding_%"].mean()) if total else 0
+    max_f = float(df["Inbreeding_%"].max()) if total else 0
+    avg_ebv = float(df["EBV"].mean()) if total else 0
+    max_ebv = float(df["EBV"].max()) if total else 0
+    min_ebv = float(df["EBV"].min()) if total else 0
+
+    class_counts = df["Classification"].value_counts().to_dict() if "Classification" in df.columns else {}
+
+    threshold_ebv = df["EBV"].quantile(0.75) if total else 0
+    threshold_low_ebv = df["EBV"].quantile(0.10) if total else 0
+
+    selection_df = df[
+        (df["EBV"] >= threshold_ebv) &
+        (df["Inbreeding_%"] < safe_f_threshold) &
+        (~df["Classification"].astype(str).str.contains("Final Stock", case=False, na=False))
+    ].sort_values(["EBV", "Inbreeding_%"], ascending=[False, True]).copy()
+
+    culling_df = df[
+        (df["Inbreeding_%"] >= 25) |
+        (df["Reproduction_Warning"].astype(str) != "") |
+        (df["EBV"] <= threshold_low_ebv)
+    ].sort_values(["Inbreeding_%", "EBV"], ascending=[False, True]).copy()
+
+    valid_phenos = pd.to_numeric(df.get("Phenotype", pd.Series(dtype=float)), errors="coerce").dropna()
+
+    phenotype_summary = {
+        "available": not valid_phenos.empty,
+        "average": float(valid_phenos.mean()) if not valid_phenos.empty else None,
+        "sd": float(valid_phenos.std()) if len(valid_phenos) > 1 else None,
+        "selection_response": None,
+        "next_generation_estimate": None,
+    }
+
+    if not valid_phenos.empty and len(valid_phenos) > 1:
+        sd_p = float(valid_phenos.std())
+        response = calculate_selection_response(h2_value, sd_p, intensity_value)
+        phenotype_summary["selection_response"] = float(response)
+        phenotype_summary["next_generation_estimate"] = float(valid_phenos.mean() + response)
+
+    hwe_res = analyze_hardy_weinberg(df)
+
+    # Mating simulation summary
+    mating_pairs = simulate_mating_pairs(
+        df,
+        matrix_df,
+        h2_value=h2_value,
+        depression_rate_value=depression_rate_value,
+        max_offspring_f=safe_f_threshold,
+        max_pairs=20,
+    )
+
+    best_pair = mating_pairs.iloc[0].to_dict() if not mating_pairs.empty else None
+
+    # Pure line summary
+    pair_pool = build_pair_pool_for_pure_lines(
+        df,
+        matrix_df,
+        h2_value=h2_value,
+        depression_rate_value=depression_rate_value,
+        max_offspring_f=safe_f_threshold,
+    )
+    selected_lines = select_four_safe_pure_lines(
+        pair_pool,
+        max_offspring_f=safe_f_threshold,
+        required_lines=4,
+    ) if not pair_pool.empty else pd.DataFrame()
+
+    pyramid_df = simulate_stock_pyramid_from_lines(
+        selected_lines,
+        max_offspring_f=safe_f_threshold,
+    ) if not selected_lines.empty else pd.DataFrame()
+
+    if very_high_risk > 0 or warning_count > 0:
+        overall_status = "High Attention Required"
+        conclusion = (
+            "The population contains very high inbreeding risk or close-relative mating warnings. "
+            "Breeding decisions should be controlled carefully. Avoid using high-risk animals as parents and prioritize unrelated mating."
+        )
+    elif avg_f >= 6.25 or high_risk > 0:
+        overall_status = "Moderate Genetic Risk"
+        conclusion = (
+            "The population shows moderate genetic risk. Selection can continue, but every mating decision should be checked using the relationship matrix."
+        )
+    elif len(selection_df) > 0:
+        overall_status = "Good Breeding Potential"
+        conclusion = (
+            "The population has usable breeding candidates with acceptable inbreeding levels. "
+            "Use high-EBV and low-F animals while maintaining sire rotation and unrelated mating."
+        )
+    else:
+        overall_status = "Limited Breeding Potential"
+        conclusion = (
+            "The population does not show strong breeding candidates under the current criteria. "
+            "Improve recording quality, introduce unrelated genetics, or expand the breeding population."
+        )
+
+    recommendations = []
+
+    if len(selection_df) > 0:
+        recommendations.append("Use the top selection candidates as priority parents because they combine higher EBV and lower inbreeding risk.")
+    else:
+        recommendations.append("No strong selection candidates were detected. Consider adding unrelated sires or improving phenotype records.")
+
+    if len(culling_df) > 0:
+        recommendations.append("Do not prioritize culling candidates as breeding stock. Use them for commercial production or remove them from the breeding nucleus.")
+
+    if warning_count > 0:
+        recommendations.append("Immediately avoid sire-daughter, parent-offspring, and close-relative mating shown by reproduction warnings.")
+
+    if best_pair:
+        recommendations.append(
+            f"Best simulated mating pair: male/sire {best_pair['Suggested_Sire']} with female/dam {best_pair['Suggested_Dam']}."
+        )
+
+    if not selected_lines.empty and len(selected_lines) >= 4:
+        recommendations.append("A four-line GGPS-GPS-PS-FS structure can be simulated from the available data, but it should still be validated with larger founder numbers.")
+    else:
+        recommendations.append("A complete four-line pure-line pyramid needs more unrelated male and female founders for safer implementation.")
+
+    recommendations.append("Recalculate EBV, inbreeding, relationship matrix, and mating simulation after every new generation.")
+
+    return {
+        "total": total,
+        "inbred": inbred,
+        "low_risk": low_risk,
+        "moderate_risk": moderate_risk,
+        "high_risk": high_risk,
+        "very_high_risk": very_high_risk,
+        "warning_count": warning_count,
+        "avg_f": avg_f,
+        "max_f": max_f,
+        "avg_ebv": avg_ebv,
+        "max_ebv": max_ebv,
+        "min_ebv": min_ebv,
+        "class_counts": class_counts,
+        "selection_df": selection_df,
+        "culling_df": culling_df,
+        "phenotype_summary": phenotype_summary,
+        "hwe_res": hwe_res,
+        "mating_pairs": mating_pairs,
+        "best_pair": best_pair,
+        "selected_lines": selected_lines,
+        "pyramid_df": pyramid_df,
+        "overall_status": overall_status,
+        "conclusion": conclusion,
+        "recommendations": recommendations,
+    }
+
+
+def generate_breeder_summary_pdf(
+    result_df: pd.DataFrame,
+    matrix_df: pd.DataFrame,
+    h2_value: float,
+    intensity_value: float,
+    depression_rate_value: float,
+    safe_f_threshold: float = 6.25,
+):
+    """
+    Creates a complete breeder-friendly PDF summary report.
+    """
+    if not REPORTLAB_AVAILABLE:
+        return None
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=28, leftMargin=28, topMargin=28, bottomMargin=28)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    summary = build_breeder_summary_data(
+        result_df,
+        matrix_df,
+        h2_value=h2_value,
+        intensity_value=intensity_value,
+        depression_rate_value=depression_rate_value,
+        safe_f_threshold=safe_f_threshold,
+    )
+
+    title_style = styles["Heading1"]
+    title_style.alignment = 1
+
+    elements.append(Paragraph("BREEDER SUMMARY & CONCLUSION REPORT", title_style))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"<b>Analysis time:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}", styles["Normal"]))
+    elements.append(Paragraph(f"<b>Overall status:</b> {summary['overall_status']}", styles["Normal"]))
+    elements.append(Spacer(1, 12))
+
+    elements.append(Paragraph("<b>1. Executive Conclusion</b>", styles["Heading2"]))
+    elements.append(Paragraph(summary["conclusion"], styles["Normal"]))
+    elements.append(Spacer(1, 8))
+
+    elements.append(Paragraph("<b>2. Population Summary</b>", styles["Heading2"]))
+
+    pop_data = [
+        ["Parameter", "Value"],
+        ["Total animals", str(summary["total"])],
+        ["Inbred animals", str(summary["inbred"])],
+        ["Average inbreeding F", f"{summary['avg_f']:.2f}%"],
+        ["Highest inbreeding F", f"{summary['max_f']:.2f}%"],
+        ["Average EBV", f"{summary['avg_ebv']:.4f}"],
+        ["Highest EBV", f"{summary['max_ebv']:.4f}"],
+        ["Lowest EBV", f"{summary['min_ebv']:.4f}"],
+        ["Reproduction warnings", str(summary["warning_count"])],
+    ]
+
+    pop_table = Table(pop_data, colWidths=[220, 230], repeatRows=1)
+    pop_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements.append(pop_table)
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>3. Inbreeding Risk Distribution</b>", styles["Heading2"]))
+
+    risk_data = [
+        ["Risk Category", "Count"],
+        ["Low risk: 0 < F < 6.25%", str(summary["low_risk"])],
+        ["Moderate risk: 6.25% <= F < 12.5%", str(summary["moderate_risk"])],
+        ["High risk: 12.5% <= F < 25%", str(summary["high_risk"])],
+        ["Very high risk: F >= 25%", str(summary["very_high_risk"])],
+    ]
+
+    risk_table = Table(risk_data, colWidths=[300, 150], repeatRows=1)
+    risk_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements.append(risk_table)
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>4. Classification Summary</b>", styles["Heading2"]))
+    class_rows = [["Classification", "Count"]]
+    for label, count in summary["class_counts"].items():
+        class_rows.append([str(label), str(count)])
+
+    class_table = Table(class_rows, colWidths=[300, 150], repeatRows=1)
+    class_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2563eb")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+    ]))
+    elements.append(class_table)
+    elements.append(Spacer(1, 10))
+
+    phenotype = summary["phenotype_summary"]
+    elements.append(Paragraph("<b>5. Phenotype and Selection Response</b>", styles["Heading2"]))
+    if phenotype["available"]:
+        phenotype_rows = [
+            ["Parameter", "Value"],
+            ["Average phenotype", f"{phenotype['average']:.4f}" if phenotype["average"] is not None else "-"],
+            ["Phenotype standard deviation", f"{phenotype['sd']:.4f}" if phenotype["sd"] is not None else "-"],
+            ["Selection response R", f"{phenotype['selection_response']:.4f}" if phenotype["selection_response"] is not None else "-"],
+            ["Next generation estimate", f"{phenotype['next_generation_estimate']:.4f}" if phenotype["next_generation_estimate"] is not None else "-"],
+        ]
+        phenotype_table = Table(phenotype_rows, colWidths=[250, 200], repeatRows=1)
+        phenotype_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ]))
+        elements.append(phenotype_table)
+    else:
+        elements.append(Paragraph("Phenotype data is not available or not valid, so selection response could not be estimated.", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>6. Top Selection Candidates</b>", styles["Heading2"]))
+    selection_df = summary["selection_df"].head(10)
+    if not selection_df.empty:
+        selection_rows = [["Animal ID", "Sex/Role", "EBV", "F (%)", "Classification"]]
+        for _, row in selection_df.iterrows():
+            selection_rows.append([
+                str(row["Animal_ID"]),
+                str(row.get("Sex_Role", "-")),
+                f"{row['EBV']:.4f}",
+                f"{row['Inbreeding_%']:.2f}",
+                str(row["Classification"]),
+            ])
+        selection_table = Table(selection_rows, colWidths=[90, 140, 70, 70, 120], repeatRows=1)
+        selection_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#16a34a")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(selection_table)
+    else:
+        elements.append(Paragraph("No strong selection candidates were detected under the current criteria.", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>7. Priority Culling / Non-Breeding Candidates</b>", styles["Heading2"]))
+    culling_df = summary["culling_df"].head(10)
+    if not culling_df.empty:
+        culling_rows = [["Animal ID", "EBV", "F (%)", "Warning", "Classification"]]
+        for _, row in culling_df.iterrows():
+            culling_rows.append([
+                str(row["Animal_ID"]),
+                f"{row['EBV']:.4f}",
+                f"{row['Inbreeding_%']:.2f}",
+                str(row.get("Reproduction_Warning", "-"))[:30],
+                str(row["Classification"]),
+            ])
+        culling_table = Table(culling_rows, colWidths=[90, 70, 70, 150, 110], repeatRows=1)
+        culling_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dc2626")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(culling_table)
+    else:
+        elements.append(Paragraph("No priority culling candidates were detected.", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>8. Best Mating Simulation</b>", styles["Heading2"]))
+    best_pair = summary["best_pair"]
+    if best_pair:
+        mating_text = (
+            f"Best simulated pair: male/sire <b>{best_pair['Suggested_Sire']}</b> with "
+            f"female/dam <b>{best_pair['Suggested_Dam']}</b>. "
+            f"Predicted offspring F: <b>{best_pair['Predicted_Offspring_F_%']:.2f}%</b>. "
+            f"Expected offspring EBV: <b>{best_pair['Expected_Offspring_EBV']:.4f}</b>. "
+            f"Decision: <b>{best_pair['Decision']}</b>."
+        )
+        elements.append(Paragraph(mating_text, styles["Normal"]))
+    else:
+        elements.append(Paragraph("No mating simulation could be generated from the current dataset.", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>9. Pure Line / Stock Pyramid Summary</b>", styles["Heading2"]))
+    selected_lines = summary["selected_lines"]
+    if not selected_lines.empty:
+        line_rows = [["Line", "GGPS Male/Sire", "GGPS Female/Dam", "F (%)", "Expected EBV"]]
+        for _, row in selected_lines.head(4).iterrows():
+            line_rows.append([
+                str(row["Line"]),
+                str(row["GGPS_Male"]),
+                str(row["GGPS_Female"]),
+                f"{row['GGPS_Expected_F_%']:.2f}",
+                f"{row['GGPS_Expected_EBV']:.4f}",
+            ])
+        line_table = Table(line_rows, colWidths=[60, 110, 110, 70, 100], repeatRows=1)
+        line_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#7c3aed")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(line_table)
+        elements.append(Spacer(1, 6))
+        elements.append(Paragraph("Recommended structure: GGPS pure lines are maintained separately, GPS multiplies each line, PS uses controlled inter-line crossing, and FS is terminal commercial stock.", styles["Normal"]))
+    else:
+        elements.append(Paragraph("A complete pure-line pyramid could not be generated. More unrelated male and female founders are recommended.", styles["Normal"]))
+    elements.append(Spacer(1, 10))
+
+    elements.append(Paragraph("<b>10. Practical Recommendations</b>", styles["Heading2"]))
+    for rec in summary["recommendations"]:
+        elements.append(Paragraph(f"- {rec}", styles["Normal"]))
+
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph("<b>Final Note</b>", styles["Heading2"]))
+    elements.append(Paragraph(
+        "This report is a decision-support output based on available pedigree and phenotype data. "
+        "For long-term breeding programs, validate results with field performance, health records, reproductive records, and expert review.",
+        styles["Normal"],
+    ))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+
 def apply_custom_css():
     st.markdown("""
         <style>
@@ -1861,12 +2462,57 @@ def main():
         intensity = st.slider("Selection Intensity (i)", 0.0, 3.0, 1.5, 0.1)
 
     try:
-        internal = standardize_input(raw_df, id_col, sire_col, dam_col, pheno_val)
-        std_df, res_df, matrix_df = calculate(
+        try:
+            internal = standardize_input(raw_df, id_col, sire_col, dam_col, pheno_val)
+        except Exception as input_error:
+            st.error("The uploaded data format is not valid yet.")
+            st.write("Please check your column mapping and required data format.")
+            with st.expander("Error detail", expanded=False):
+                st.write(str(input_error))
+            show_input_validation_messages({
+                "errors": [
+                    "Column mapping failed. Make sure Animal_ID, Sire_ID, and Dam_ID are selected correctly."
+                ],
+                "warnings": []
+            })
+            st.stop()
+
+        validation_result = validate_input_data(
             internal,
-            h2=h2,
-            depression_rate=depression_rate,
+            phenotype_enabled=pheno_val is not None,
         )
+
+        show_input_validation_messages(validation_result)
+
+        if not validation_result["valid"]:
+            st.stop()
+
+        try:
+            std_df, res_df, matrix_df = calculate(
+                internal,
+                h2=h2,
+                depression_rate=depression_rate,
+            )
+        except ValueError as calc_error:
+            st.error("The pedigree structure could not be calculated.")
+            st.write("Please fix the parent-child relationship records according to the rules below.")
+            show_input_validation_messages({
+                "errors": [str(calc_error)],
+                "warnings": []
+            })
+            st.stop()
+        except Exception as calc_error:
+            st.error("The data could not be processed because the pedigree format is not valid.")
+            st.write("Please check the uploaded file and follow the data writing rules below.")
+            show_input_validation_messages({
+                "errors": [
+                    "Calculation failed. Check duplicated IDs, parent IDs, empty values, phenotype format, or pedigree cycles."
+                ],
+                "warnings": []
+            })
+            with st.expander("Technical detail for debugging", expanded=False):
+                st.write(str(calc_error))
+            st.stop()
 
         res_display_data = res_df[res_df["Data_Type"] == "Input data"].copy()
         res_display_data = add_sex_role_column(res_display_data)
@@ -1878,6 +2524,7 @@ def main():
             "Relationship Matrix",
             "Heterosis & Crossbreeding",
             "Pure Line Pyramid",
+            "Summary & Conclusion",
         ])
 
         with tabs[0]:
@@ -2981,18 +3628,249 @@ def main():
                     use_container_width=True,
                 )
 
-    except Exception as e:
-        st.error("An error occurred while processing the data.")
-        st.exception(e)
-        st.info("""
-        Please check the following:
 
-        1. `Animal_ID`, `Sire_ID`, and `Dam_ID` columns are mapped correctly.
-        2. Animal IDs are unique and consistent.
-        3. Missing parents are written as `-` or left empty.
-        4. The pedigree does not contain cycles, for example an animal listed as its own ancestor.
-        5. Phenotype values are numeric if used for EBV calculation.
-        """)
+        with tabs[6]:
+            st.subheader("Summary & Conclusion for Breeder")
+
+            st.markdown("""
+            This tab provides a practical summary for breeders. It combines population status, inbreeding risk, EBV performance, selection candidates, culling candidates, mating recommendation, and pure-line pyramid readiness into one easy-to-read conclusion.
+            """)
+
+            safe_summary_f = st.slider(
+                "Safe inbreeding threshold for summary (%)",
+                min_value=0.0,
+                max_value=12.5,
+                value=6.25,
+                step=0.25,
+                help="This threshold is used to classify safe mating, selection candidates, and pure-line recommendations."
+            )
+
+            breeder_summary = build_breeder_summary_data(
+                res_display_data,
+                matrix_df,
+                h2_value=h2,
+                intensity_value=intensity,
+                depression_rate_value=depression_rate,
+                safe_f_threshold=safe_summary_f,
+            )
+
+            st.markdown("### Executive Status")
+
+            status_col1, status_col2, status_col3, status_col4 = st.columns(4)
+
+            status_col1.metric("Overall Status", breeder_summary["overall_status"])
+            status_col2.metric("Total Animals", f"{breeder_summary['total']}")
+            status_col3.metric("Average F", f"{breeder_summary['avg_f']:.2f}%")
+            status_col4.metric("Average EBV", f"{breeder_summary['avg_ebv']:.4f}")
+
+            st.success(f"**Conclusion:** {breeder_summary['conclusion']}")
+
+            st.markdown("### Population Risk Summary")
+
+            risk_summary_df = pd.DataFrame({
+                "Category": [
+                    "Not inbred",
+                    "Low risk: 0 < F < 6.25%",
+                    "Moderate risk: 6.25% <= F < 12.5%",
+                    "High risk: 12.5% <= F < 25%",
+                    "Very high risk: F >= 25%",
+                    "Reproduction warning",
+                ],
+                "Total": [
+                    breeder_summary["total"] - breeder_summary["inbred"],
+                    breeder_summary["low_risk"],
+                    breeder_summary["moderate_risk"],
+                    breeder_summary["high_risk"],
+                    breeder_summary["very_high_risk"],
+                    breeder_summary["warning_count"],
+                ],
+            })
+
+            st.dataframe(risk_summary_df, hide_index=True, use_container_width=True)
+
+            st.markdown("### Classification Summary")
+
+            class_summary_df = pd.DataFrame(
+                [{"Classification": k, "Total": v} for k, v in breeder_summary["class_counts"].items()]
+            )
+
+            if not class_summary_df.empty:
+                st.dataframe(class_summary_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("No classification summary is available.")
+
+            st.markdown("### Phenotype and Selection Response Summary")
+
+            phenotype_info = breeder_summary["phenotype_summary"]
+
+            if phenotype_info["available"]:
+                pheno_cols = st.columns(4)
+                pheno_cols[0].metric("Average Phenotype", f"{phenotype_info['average']:.4f}" if phenotype_info["average"] is not None else "-")
+                pheno_cols[1].metric("Phenotype SD", f"{phenotype_info['sd']:.4f}" if phenotype_info["sd"] is not None else "-")
+                pheno_cols[2].metric("Selection Response R", f"{phenotype_info['selection_response']:.4f}" if phenotype_info["selection_response"] is not None else "-")
+                pheno_cols[3].metric("Next Gen Estimate", f"{phenotype_info['next_generation_estimate']:.4f}" if phenotype_info["next_generation_estimate"] is not None else "-")
+            else:
+                st.info("Phenotype data is not available, so selection response cannot be summarized.")
+
+            st.markdown("### Recommended Breeding Candidates")
+
+            selection_df = breeder_summary["selection_df"].head(15)
+
+            if not selection_df.empty:
+                st.dataframe(
+                    selection_df[[
+                        "Animal_ID", "Sex_Role", "Sire_ID", "Dam_ID",
+                        "EBV", "Inbreeding_%", "Classification", "Recommendation"
+                    ]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.warning("No strong breeding candidates were detected under the current criteria.")
+
+            st.markdown("### Priority Non-Breeding / Culling Candidates")
+
+            culling_df = breeder_summary["culling_df"].head(15)
+
+            if not culling_df.empty:
+                st.dataframe(
+                    culling_df[[
+                        "Animal_ID", "Sex_Role", "EBV", "Inbreeding_%",
+                        "Classification", "Reproduction_Warning", "Recommendation"
+                    ]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.success("No priority culling candidates were detected.")
+
+            st.markdown("### Best Mating Recommendation")
+
+            best_pair = breeder_summary["best_pair"]
+
+            if best_pair:
+                st.info(f"""
+                **Best simulated pair for safe mating:**
+
+                - **Male / Sire:** {best_pair['Suggested_Sire']}
+                - **Female / Dam:** {best_pair['Suggested_Dam']}
+                - **Predicted offspring F:** {best_pair['Predicted_Offspring_F_%']:.2f}%
+                - **Expected offspring EBV:** {best_pair['Expected_Offspring_EBV']:.4f}
+                - **Risk level:** {best_pair['Risk_Level']}
+                - **Decision:** {best_pair['Decision']}
+                """)
+            else:
+                st.warning("No mating recommendation could be generated from the current dataset.")
+
+            st.markdown("### Pure Line Pyramid Readiness")
+
+            selected_lines = breeder_summary["selected_lines"]
+            pyramid_df = breeder_summary["pyramid_df"]
+
+            if not selected_lines.empty:
+                st.write("**Selected GGPS founder lines:**")
+                st.dataframe(
+                    selected_lines[[
+                        "Line", "GGPS_Male", "Sire_Role", "GGPS_Female", "Dam_Role",
+                        "Relationship_A", "GGPS_Expected_F_%", "GGPS_Expected_EBV", "Risk_Level"
+                    ]],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                if len(selected_lines) >= 4:
+                    st.success(
+                        "The dataset can simulate a four-line GGPS-GPS-PS-FS pyramid. Use it as a planning reference and validate with more founder animals for real implementation."
+                    )
+                else:
+                    st.warning(
+                        "The dataset can only simulate a partial pure-line structure. Add more unrelated male and female candidates to build a safer four-line pyramid."
+                    )
+
+                with st.expander("Show GGPS-GPS-PS-FS simulation table", expanded=False):
+                    st.dataframe(pyramid_df, hide_index=True, use_container_width=True)
+            else:
+                st.warning(
+                    "Pure-line pyramid readiness is low. The current dataset does not provide enough safe male-female founder combinations."
+                )
+
+            st.markdown("### Practical Breeder Recommendations")
+
+            for i, rec in enumerate(breeder_summary["recommendations"], start=1):
+                st.write(f"{i}. {rec}")
+
+            st.markdown("### Download Complete PDF Summary")
+
+            pdf_summary = generate_breeder_summary_pdf(
+                res_display_data,
+                matrix_df,
+                h2_value=h2,
+                intensity_value=intensity,
+                depression_rate_value=depression_rate,
+                safe_f_threshold=safe_summary_f,
+            )
+
+            if pdf_summary:
+                st.download_button(
+                    "Download Complete Breeder Summary PDF",
+                    pdf_summary,
+                    "breeder_summary_conclusion_report.pdf",
+                    "application/pdf",
+                    use_container_width=True,
+                )
+            else:
+                st.error("PDF generation is not available. Please install reportlab: pip install reportlab")
+
+            summary_csv = pd.DataFrame({
+                "Item": [
+                    "Overall Status",
+                    "Conclusion",
+                    "Total Animals",
+                    "Inbred Animals",
+                    "Average F",
+                    "Highest F",
+                    "Average EBV",
+                    "Highest EBV",
+                    "Reproduction Warnings",
+                    "Selection Candidates",
+                    "Culling Candidates",
+                ],
+                "Value": [
+                    breeder_summary["overall_status"],
+                    breeder_summary["conclusion"],
+                    breeder_summary["total"],
+                    breeder_summary["inbred"],
+                    f"{breeder_summary['avg_f']:.2f}%",
+                    f"{breeder_summary['max_f']:.2f}%",
+                    f"{breeder_summary['avg_ebv']:.4f}",
+                    f"{breeder_summary['max_ebv']:.4f}",
+                    breeder_summary["warning_count"],
+                    len(breeder_summary["selection_df"]),
+                    len(breeder_summary["culling_df"]),
+                ],
+            })
+
+            st.download_button(
+                "Download Summary CSV",
+                summary_csv.to_csv(index=False).encode("utf-8"),
+                "breeder_summary.csv",
+                "text/csv",
+                use_container_width=True,
+            )
+
+    except Exception as e:
+        st.error("The application could not continue because the uploaded data or selected configuration needs correction.")
+        st.write("Please review the data writing rules below, then upload the corrected file again.")
+
+        show_input_validation_messages({
+            "errors": [
+                "Unexpected processing issue. Please check column mapping, duplicated Animal_ID, parent IDs, phenotype values, and pedigree cycles."
+            ],
+            "warnings": []
+        })
+
+        with st.expander("Technical detail for developer", expanded=False):
+            st.write(str(e))
 
 
 if __name__ == "__main__":
