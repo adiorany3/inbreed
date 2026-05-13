@@ -3989,8 +3989,8 @@ def render_workflow_overview():
         <ol>
             <li><b>Input:</b> choose a sample or upload a file, then map the required columns.</li>
             <li><b>Validation:</b> check data quality, pedigree completeness, and metadata.</li>
-            <li><b>Analysis:</b> review the dashboard, pedigree, relationship matrix, mating, and pure-line modules.</li>
-            <li><b>Output:</b> download the PDF report, visualization, mating calendar, or next-generation template.</li>
+            <li><b>Analysis:</b> review charts, pedigree, relationship matrix, heterosis, tandem selection, and pure-line planning.</li>
+            <li><b>Output:</b> manage advanced breeding tools, then download the official report and templates.</li>
         </ol>
     </div>
     """, unsafe_allow_html=True)
@@ -4342,11 +4342,11 @@ def main():
             "3. Pedigree Explorer",
             "4. Relationship Matrix",
             "5. Heterosis",
-            "6. Pure Line Pyramid",
-            "7. Breeder Report",
-            "8. Field Guide",
-            "9. Advanced Breeding Management",
-            "10. Tandem Selection Strategy",
+            "6. Tandem Selection Strategy",
+            "7. Pure Line Pyramid",
+            "8. Advanced Breeding Management",
+            "9. Breeder Report",
+            "10. Field Guide",
         ])
 
         with tabs[0]:
@@ -5342,7 +5342,7 @@ def main():
                 st.info("Heterosis data is not available.")
 
 
-        with tabs[5]:
+        with tabs[6]:
             render_section_header(
                 "Pure Line Pyramid",
                 "Simulation of four-line breeding structure for GGPS, GPS, PS, and FS planning.",
@@ -5553,7 +5553,7 @@ def main():
                 )
 
 
-        with tabs[6]:
+        with tabs[8]:
             render_section_header(
                 "Breeder Report",
                 "Breeder-friendly conclusion, candidate summary, mating recommendation, pure-line readiness, and official PDF export.",
@@ -5833,7 +5833,7 @@ def main():
             )
 
 
-        with tabs[7]:
+        with tabs[9]:
             render_section_header(
                 "Field Guide",
                 "Practical explanation of how pedigree breeding can be implemented in real poultry and cattle programs.",
@@ -6074,7 +6074,7 @@ def main():
             )
 
 
-        with tabs[8]:
+        with tabs[7]:
             render_section_header(
                 "Advanced Breeding Management",
                 "Additional professional breeding modules. These modules use optional columns when available and show guidance when the current sample data is incomplete.",
@@ -6256,7 +6256,7 @@ def main():
             )
 
 
-        with tabs[9]:
+        with tabs[5]:
             render_section_header(
                 "Tandem Selection Strategy",
                 "A staged selection strategy that focuses on one priority trait at a time across generations.",
