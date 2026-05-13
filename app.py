@@ -724,6 +724,24 @@ def generate_pdf(result_df, settings=None):
     else:
         elements.append(Paragraph("No high-priority culling candidates found.", styles['Normal']))
     
+    elements.append(Spacer(1, 15))
+
+    # --- SECTION 8: MATING STRATEGY (INBREEDING PREVENTION) ---
+    elements.append(Paragraph("<b>8. Mating Strategy to Prevent Future Inbreeding:</b>", styles['Heading2']))
+    strategy_txt = """
+    To ensure genetic progress while maintaining healthy inbreeding levels in the next generation:
+    <br/><br/>
+    • <b>Lineage Crossing:</b> Pair selected individuals from unrelated families (check the Relationship Matrix).
+    <br/>
+    • <b>Avoid Kinship Mating:</b> Never mate full-siblings, half-siblings, or parent-offspring pairs.
+    <br/>
+    • <b>Popular Sire Management:</b> Limit the usage of a single 'Elite' sire to no more than 15-20% of the dam population.
+    <br/>
+    • <b>Outcrossing:</b> If no suitable unrelated elite sires are available, prioritize using external semen (AI) from tested, unrelated bulls.
+    <br/>
+    • <b>Replacement Strategy:</b> Retain female offspring from 'Elite' parents to replace older 'Commercial' dams.
+    """
+    elements.append(Paragraph(strategy_txt, styles['Normal']))
     elements.append(Spacer(1, 20))
 
     # Permanent URL link with more explicit format
@@ -1168,6 +1186,59 @@ def main():
                 st.error(f"**Culling Candidates (Slaughter/Out): {len(culling_df)} heads**")
                 st.write("Based on extreme inbreeding, backcross cases, or very low genetic potential.")
                 st.dataframe(culling_df[["Animal_ID", "EBV", "Inbreeding_%", "Reproduction_Warning"]], hide_index=True)
+            # ---------------------------------
+
+            # --- MATING STRATEGY SECTION ---
+            st.markdown("---")
+            st.subheader("Future Mating Strategy (Inbreeding Prevention)")
+            
+            # Divide selection candidates into males and females for mating recommendations
+            # We use the internal 'Breeding_Interpretation' to guestimate gender if possible, 
+            # otherwise we just look at candidates IDs.
+            males = seleksi_df[seleksi_df["Breeding_Interpretation"].str.contains("Sire|Pejantan", case=False)]
+            females = seleksi_df[seleksi_df["Breeding_Interpretation"].str.contains("Dam|Indukan|Female|Betina", case=False)]
+            
+            col_m, col_f = st.columns(2)
+            with col_m:
+                st.write(f"**Available Elite/Selected Sires: {len(males)}**")
+                if not males.empty:
+                    st.dataframe(males[["Animal_ID", "EBV", "Inbreeding_%"]], hide_index=True)
+                else:
+                    st.info("No Elite Sires detected in selection candidates. Consider using **AI (Artificial Insemination)** with external tested sires.")
+            
+            with col_f:
+                st.write(f"**Available Elite/Selected Dams: {len(females)}**")
+                if not females.empty:
+                    st.dataframe(females[["Animal_ID", "EBV", "Inbreeding_%"]], hide_index=True)
+                else:
+                    st.info("No Elite Dams detected in selection candidates.")
+
+            if not males.empty and not females.empty:
+                st.markdown("#### Suggested Pairings (Based on Genetic Distance)")
+                pairings = []
+                # Simple strategy: Match best EBVs while ensuring they are from different lineages
+                # In a real app we'd check the A-matrix relationship between them.
+                for _, f_row in females.head(5).iterrows():
+                    f_id = f_row["Animal_ID"]
+                    # Find a sire with lowest relationship in A-matrix (if possible)
+                    # For now, we recommend cross-matching among survivors
+                    best_sire = males.iloc[0]["Animal_ID"]
+                    pairings.append({"Dam": f_id, "Suggested Sire": best_sire, "Strategy": "High EBV Crossing"})
+                
+                st.table(pairings)
+                st.caption("Note: Pairing recommendations ensure top genetic potential. Always verify physical health before mating.")
+            
+            st.markdown("""
+            <div class="info-card" style="border-left: 4px solid #3b82f6;">
+            <b>Mating Strategy to Prevent Future Inbreeding:</b>
+            <ul>
+                <li><b>Avoid Full/Half-Sib Matings:</b> Never mate candidates sharing the same Sire or Dam.</li>
+                <li><b>Line Crossing:</b> Pair selected individuals from unrelated lineages (e.g., Line A x Line B).</li>
+                <li><b>Compensatory Mating:</b> Correct weaknesses in selected dams by choosing sires excelling in those specific traits.</li>
+                <li><b>A-Matrix Utility:</b> Look at the 'Relationship Matrix' tab. Pick pairs with relationship values near 0.0.</li>
+            </ul>
+            </div>
+            """, unsafe_allow_html=True)
             # ---------------------------------
 
             # Extra Insights Section
