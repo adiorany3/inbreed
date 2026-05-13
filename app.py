@@ -480,22 +480,79 @@ def make_dot(result_df, max_nodes=50):
     return "\n".join(dot)
 
 
-def dots_to_pedigree(result_df):
+def dots_to_pedigree(result_df, settings=None):
     """Creates a quick text summary report (.txt) for field use."""
-    lines = ["LIVESTOCK BREEDING ANALYSIS REPORT", "="*40]
+    lines = ["LIVESTOCK BREEDING & INBREEDING SUMMARY", "="*50]
     lines.append(f"Printed on: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')}")
-    lines.append(f"Interactive Visualization: https://inbreeding.streamlit.app/")
-    lines.append("-" * 40 + "\n")
+    lines.append(f"Developer : Galuh Adi Insani (Universitas Gadjah Mada)")
+    lines.append(f"Official App: https://inbreeding.streamlit.app/")
+    lines.append("="*50 + "\n")
+
+    # 1. POPULATION SUMMARY
+    avg_f = result_df["Inbreeding_%"].mean()
+    avg_ebv = result_df["EBV"].mean()
+    lines.append("1. POPULATION STATISTICS")
+    lines.append(f"   Total Animals        : {len(result_df)}")
+    lines.append(f"   Average Inbreeding F : {avg_f:.2f}%")
+    lines.append(f"   Average EBV          : {avg_ebv:.4f}")
     
+    if "Phenotype" in result_df.columns:
+        valid_phenos = pd.to_numeric(result_df["Phenotype"], errors='coerce').dropna()
+        if not valid_phenos.empty:
+            avg_p = valid_phenos.mean()
+            sd_p = valid_phenos.std()
+            lines.append(f"   Average Phenotype    : {avg_p:.2f} +/- {sd_p:.2f}")
+            if settings and 'h2' in settings and 'intensity' in settings:
+                response = calculate_selection_response(settings['h2'], sd_p, settings['intensity'])
+                lines.append(f"   Selection Response R : {response:.4f}")
+    
+    hwe_res = analyze_hardy_weinberg(result_df)
+    lines.append(f"   HWE Genetic Status   : {hwe_res['status']}")
+    lines.append("-" * 50 + "\n")
+
+    # 2. SELECTION CANDIDATES
+    threshold_ebv = result_df["EBV"].quantile(0.75)
+    selection_df = result_df[
+        (result_df["EBV"] >= threshold_ebv) & 
+        (result_df["Inbreeding_%"] < 6.25)
+    ].sort_values("EBV", ascending=False).head(10)
+    
+    lines.append("2. TOP 10 SELECTION CANDIDATES")
+    if not selection_df.empty:
+        lines.append(f"   {'Animal_ID':<15} {'EBV':<10} {'F (%)':<8} {'Classification':<20}")
+        for _, r in selection_df.iterrows():
+            lines.append(f"   {str(r['Animal_ID']):<15} {r['EBV']:<10.4f} {r['Inbreeding_%']:<8.2f} {str(r['Classification']):<20}")
+    else:
+        lines.append("   No candidates found.")
+    lines.append("-" * 50 + "\n")
+
+    # 3. PRIORITY CULLING
+    threshold_low_ebv = result_df["EBV"].quantile(0.10)
+    culling_df = result_df[
+        (result_df["Inbreeding_%"] >= 25) | 
+        (result_df["Reproduction_Warning"] != "") |
+        (result_df["EBV"] <= threshold_low_ebv)
+    ].sort_values("Inbreeding_%", ascending=False).head(10)
+
+    lines.append("3. PRIORITY CULLING CANDIDATES (Top 10 High Risk)")
+    if not culling_df.empty:
+        lines.append(f"   {'Animal_ID':<15} {'F (%)':<8} {'Warning':<25}")
+        for _, r in culling_df.iterrows():
+            warn = r['Reproduction_Warning'] if r['Reproduction_Warning'] else "Low Genetic/High F"
+            lines.append(f"   {str(r['Animal_ID']):<15} {r['Inbreeding_%']:<8.2f} {warn:<25}")
+    else:
+        lines.append("   No priority culling needed.")
+    lines.append("-" * 50 + "\n")
+
+    # 4. INDIVIDUAL DETAILS
+    lines.append("4. COMPLETE INDIVIDUAL LOG")
     for _, row in result_df.iterrows():
-        lines.append(f"Individual    : {row['Animal_ID']}")
-        lines.append(f"Inbreeding (F): {row['Inbreeding_%']:.2f}%")
-        lines.append(f"EBV           : {row['EBV']:.4f}")
-        lines.append(f"Classification: {row['Classification']}")
-        lines.append(f"Recommendation: {row['Recommendation']}")
-        lines.append("-" * 30)
+        lines.append(f"   [{row['Animal_ID']}] F: {row['Inbreeding_%']:.2f}% | EBV: {row['EBV']:.4f} | {row['Classification']}")
+        if row['Reproduction_Warning']:
+            lines.append(f"   !!! WARNING: {row['Reproduction_Warning']}")
     
-    lines.append("\n*Note: Since data exceeds 100 animals, web application visualization only shows the first 50 individuals for performance.")
+    lines.append("\n" + "="*50)
+    lines.append("END OF REPORT")
     return "\n".join(lines)
 
 
